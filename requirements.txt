@@ -1,0 +1,7 @@
+textual>=0.50.0
+openai-whisper>=20231117
+pydub>=0.25.1
+pyyaml>=6.0
+openrouter>=0.1.0
+openai>=1.0.0
+anthropic>=0.18.0

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+*.pkl
+
+# Meeting notes output
+notes/
+recordings/
+/tmp/
+.status
+
+# Config files (sensitive data)
+config.yaml
+config.yml
+.env
+.env.*
+*.key
+*.pem
+
+# Docs
+docs/
+
+# Tests (outdated)
+tests/
+
+# OpenCode
+.opencode/plans/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+=*
+*~
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Migrate existing combined notes to split format (notes + transcripts)."""
+
+import re
+from pathlib import Path
+from datetime import datetime
+from typing import Optional
+import sys
+
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def migrate_note(note_path: Path, transcripts_dir: Path, dry_run: bool = False) -> bool:
+    """Split a combined note into note + transcript.
+    
+    Args:
+        note_path: Path to the existing combined note
+        transcripts_dir: Directory to save transcript files
+        dry_run: If True, don't actually modify files
+        
+    Returns:
+        True if migrated successfully, False otherwise
+    """
+    try:
+        content = note_path.read_text()
+        
+        # Check if already migrated (has transcript_file in frontmatter)
+        if 'transcript_file:' in content:
+            logger.debug(f"Already migrated: {note_path.name}")
+            return False
+        
+        # Check if it has a transcript section
+        if '## Full Transcript' not in content:
+            logger.debug(f"No transcript section found: {note_path.name}")
+            return False
+        
+        # Split into note and transcript parts
+        parts = content.split('## Full Transcript', 1)
+        if len(parts) != 2:
+            logger.warning(f"Could not split transcript section: {note_path.name}")
+            return False
+        
+        note_content = parts[0].strip()
+        transcript_content = parts[1].strip()
+        
+        # Parse frontmatter to extract metadata
+        if not note_content.startswith('---'):
+            logger.warning(f"No frontmatter found: {note_path.name}")
+            return False
+        
+        frontmatter_parts = note_content.split('---', 2)
+        if len(frontmatter_parts) < 3:
+            logger.warning(f"Invalid frontmatter: {note_path.name}")
+            return False
+        
+        frontmatter = frontmatter_parts[1]
+        body = frontmatter_parts[2]
+        
+        # Extract metadata from frontmatter
+        title = "Unknown Meeting"
+        date_str = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        duration_str = "Unknown"
+        recording_file = ""
+        
+        for line in frontmatter.split('\n'):
+            if line.strip().startswith('title:'):
+                title = line.split(':', 1)[1].strip().strip('"')
+            elif line.strip().startswith('date:'):
+                date_val = line.split(':', 1)[1].strip()
+                try:
+                    date_obj = datetime.strptime(date_val, "%Y-%m-%d")
+                    date_str = date_obj.strftime("%B %d, %Y")
+                except:
+                    pass
+            elif line.strip().startswith('time:'):
+                time_val = line.split(':', 1)[1].strip().strip('"')
+                try:
+                    time_obj = datetime.strptime(time_val, "%H:%M")
+                    date_str += f" at {time_obj.strftime('%I:%M %p')}"
+                except:
+                    pass
+            elif line.strip().startswith('duration_seconds:'):
+                duration_sec = int(line.split(':', 1)[1].strip())
+                hours = duration_sec // 3600
+                minutes = (duration_sec % 3600) // 60
+                secs = duration_sec % 60
+                parts = []
+                if hours > 0:
+                    parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+                if minutes > 0:
+                    parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+                if secs > 0 or not parts:
+                    parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+                duration_str = ", ".join(parts)
+            elif line.strip().startswith('recording_file:'):
+                recording_file = line.split(':', 1)[1].strip().strip('"')
+        
+        # Generate transcript filename
+        transcript_filename = note_path.stem + '.txt'
+        transcript_path = transcripts_dir / transcript_filename
+        
+        # Generate transcript file content
+        transcript_file_content = f"""Meeting: {title}
+Date: {date_str}
+Duration: {duration_str}
+Recording: {recording_file}
+
+{'─' * 60}
+
+{transcript_content}
+"""
+        
+        # Update note content: add transcript_file to frontmatter and update footer
+        new_frontmatter_lines = []
+        for line in frontmatter.split('\n'):
+            new_frontmatter_lines.append(line)
+            # Add transcript_file after tags line
+            if line.strip().startswith('tags:'):
+                if 'recording_file:' not in frontmatter:
+                    new_frontmatter_lines.append(f'recording_file: "{recording_file}"')
+                new_frontmatter_lines.append(f'transcript_file: "{transcript_filename}"')
+        
+        new_frontmatter = '\n'.join(new_frontmatter_lines)
+        
+        # Update footer message
+        new_body = body.replace(
+            '*Generated by Meeting Notes',
+            '*View full transcript: Press \'t\' to view transcript*\n*Generated by Meeting Notes v0.3.0 (migrated from combined format)'
+        )
+        
+        new_note_content = f"---{new_frontmatter}---{new_body}"
+        
+        if dry_run:
+            print(f"[DRY RUN] Would migrate: {note_path.name}")
+            print(f"  -> Create: {transcript_path.name}")
+            print(f"  -> Update: {note_path.name}")
+            return True
+        else:
+            # Write transcript file
+            transcript_path.write_text(transcript_file_content)
+            logger.info(f"Created transcript: {transcript_path}")
+            
+            # Update note file
+            note_path.write_text(new_note_content)
+            logger.info(f"Updated note: {note_path}")
+            
+            return True
+        
+    except Exception as e:
+        logger.error(f"Error migrating {note_path}: {e}", exc_info=True)
+        return False
+
+
+def migrate_all_notes(notes_dir: Path, transcripts_dir: Path, dry_run: bool = False):
+    """Migrate all notes in directory.
+    
+    Args:
+        notes_dir: Directory containing notes
+        transcripts_dir: Directory to save transcripts
+        dry_run: If True, don't actually modify files
+    """
+    transcripts_dir.mkdir(exist_ok=True)
+    
+    notes = list(notes_dir.glob('*.md'))
+    if not notes:
+        print(f"No notes found in {notes_dir}")
+        return
+    
+    migrated = 0
+    skipped = 0
+    failed = 0
+    
+    print(f"Found {len(notes)} notes in {notes_dir}")
+    if dry_run:
+        print("\n=== DRY RUN MODE (no files will be modified) ===\n")
+    
+    for note_path in sorted(notes):
+        try:
+            result = migrate_note(note_path, transcripts_dir, dry_run=dry_run)
+            if result:
+                migrated += 1
+                if not dry_run:
+                    print(f"✓ Migrated: {note_path.name}")
+            else:
+                skipped += 1
+        except Exception as e:
+            failed += 1
+            print(f"✗ Failed: {note_path.name} - {e}")
+    
+    print(f"\n{'=== DRY RUN ' if dry_run else ''}SUMMARY ===")
+    print(f"Total notes: {len(notes)}")
+    print(f"Migrated: {migrated}")
+    print(f"Skipped: {skipped} (already migrated or no transcript)")
+    print(f"Failed: {failed}")
+
+
+def main():
+    """CLI entry point."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Migrate meeting notes to split format')
+    parser.add_argument('--notes-dir', default='notes', help='Notes directory (default: notes)')
+    parser.add_argument('--transcripts-dir', default='transcripts', help='Transcripts directory (default: transcripts)')
+    parser.add_argument('--dry-run', action='store_true', help='Show what would be done without modifying files')
+    
+    args = parser.parse_args()
+    
+    notes_dir = Path(args.notes_dir)
+    transcripts_dir = Path(args.transcripts_dir)
+    
+    if not notes_dir.exists():
+        print(f"Error: Notes directory not found: {notes_dir}")
+        sys.exit(1)
+    
+    migrate_all_notes(notes_dir, transcripts_dir, dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    main()
