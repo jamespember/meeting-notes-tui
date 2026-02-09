@@ -37,24 +37,30 @@ class RecordingView(Container):
     def compose(self) -> ComposeResult:
         """Build the recording view UI."""
         with Vertical(id="recording-container"):
-            # Status header
-            yield Static("🔴  RECORDING", id="recording-status")
+            # Two-column layout: status on left, inputs on right
+            with Horizontal(id="recording-columns"):
+                # Left column: Recording status and monitoring info
+                with Vertical(id="recording-left-column"):
+                    # Status header
+                    yield Static("🔴  RECORDING", id="recording-status")
+                    
+                    # Timer display
+                    yield Static("00:00", id="recording-timer")
+                    
+                    # Audio device info
+                    yield Static("", id="audio-device-info")
+                
+                # Right column: User input fields
+                with Vertical(id="recording-right-column"):
+                    # Optional title input
+                    yield Static("Meeting Title (optional):", id="title-label")
+                    yield Input(placeholder="Enter meeting title...", id="meeting-title-input")
+                    
+                    # User notes area
+                    yield Static("Your Notes:", id="notes-label")
+                    yield TextArea(id="user-notes-input", language="markdown")
             
-            # Timer display
-            yield Static("00:00", id="recording-timer")
-            
-            # Audio device info
-            yield Static("", id="audio-device-info")
-            
-            # Optional title input
-            yield Static("Meeting Title (optional):", id="title-label")
-            yield Input(placeholder="Enter meeting title...", id="meeting-title-input")
-            
-            # User notes area
-            yield Static("Your Notes:", id="notes-label")
-            yield TextArea(id="user-notes-input", language="markdown")
-            
-            # Instruction hints
+            # Instruction hints at the bottom (full width)
             yield Static("Press 's' to stop and process recording", id="stop-hint")
             yield Static("Press 'x' to cancel and discard recording", id="cancel-hint")
             yield Static("Press 'Esc' to unfocus title input", id="esc-hint")
@@ -528,16 +534,35 @@ class MeetingNotesApp(App):
     }
     
     #recording-container {
-        width: 80%;
-        height: auto;
+        width: 90%;
+        height: 90%;
         align: center middle;
+    }
+    
+    #recording-columns {
+        width: 100%;
+        height: 1fr;
+        layout: horizontal;
+    }
+    
+    #recording-left-column {
+        width: 40%;
+        height: 100%;
+        padding: 2;
+        align: center top;
+    }
+    
+    #recording-right-column {
+        width: 60%;
+        height: 100%;
+        padding: 2;
     }
     
     #recording-status {
         text-align: center;
         text-style: bold;
         color: $error;
-        margin: 2;
+        margin: 2 0;
         content-align: center middle;
     }
     
@@ -547,14 +572,22 @@ class MeetingNotesApp(App):
         color: $text;
         height: 5;
         content-align: center middle;
-        margin: 1;
+        margin: 2 0;
+    }
+    
+    #audio-device-info {
+        text-align: center;
+        color: $text-muted;
+        margin: 2 0;
+        padding: 1;
+        background: $panel;
+        border: solid $primary;
+        width: 100%;
     }
     
     #title-label {
-        text-align: center;
-        margin-top: 2;
-        margin-bottom: 1;
         color: $text-muted;
+        margin-bottom: 1;
     }
     
     #meeting-title-input {
@@ -562,13 +595,14 @@ class MeetingNotesApp(App):
         margin: 0 0 2 0;
     }
     
-    #audio-device-info {
-        text-align: center;
+    #notes-label {
         color: $text-muted;
-        margin: 1 0 2 0;
-        padding: 1;
-        background: $panel;
-        border: solid $primary;
+        margin-bottom: 1;
+    }
+    
+    #user-notes-input {
+        width: 100%;
+        height: 1fr;
     }
     
     #stop-hint, #cancel-hint, #esc-hint {
