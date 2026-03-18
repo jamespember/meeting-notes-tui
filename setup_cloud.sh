@@ -20,6 +20,7 @@ case $provider_choice in
     1) provider=openai; provider_name=OpenAI; env_var=OPENAI_API_KEY; model=mini; key_url=https://platform.openai.com/api-keys ;;
     2) provider=anthropic; provider_name=Anthropic; env_var=ANTHROPIC_API_KEY; model=haiku; key_url=https://console.anthropic.com/settings/keys ;;
     3) provider=openrouter; provider_name=OpenRouter; env_var=OPENROUTER_API_KEY; model=balanced; key_url=https://openrouter.ai/keys ;;
+    4) provider=copilot; provider_name=Copilot; env_var=GITHUB_COPILOT_TOKEN; model=standard; key_url=https://github.com/settings/tokens ;;
     *) echo "Invalid choice" >&2; exit 1 ;;
 esac
 
