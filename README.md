@@ -30,6 +30,7 @@ cd meeting-notes
 ```
 
 The setup script will:
+
 1. Check system dependencies (ffmpeg, pulseaudio)
 2. Create a Python virtual environment
 3. Install all Python dependencies
@@ -47,6 +48,15 @@ sudo pacman -S python python-pip ffmpeg portaudio
 
 # Ubuntu / Debian
 sudo apt install python3 python3-pip python3-venv ffmpeg portaudio19-dev pulseaudio-utils
+
+# Fedora / RHEL
+# install rpm fusion
+sudo dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# install ffmpeg
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing
+
+sudo dnf install python3 python3-pip python3-virtualenv pulseaudio-utils portaudio
 
 # Your system should already have PipeWire/PulseAudio
 ```
@@ -69,11 +79,13 @@ pip install -r requirements.txt
 **Option A: Cloud AI (Recommended for speed and quality)**
 
 Run the cloud setup script:
+
 ```bash
 ./setup_cloud.sh
 ```
 
 Or configure manually:
+
 - Press `,` in the app → configure API key
 - Supports OpenAI, Anthropic, OpenRouter
 - Keys stored in `~/.config/meeting-notes/config.yaml`
@@ -81,12 +93,14 @@ Or configure manually:
 **Option B: Local AI (Free, private, but slower)**
 
 Install Ollama:
+
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2:3b
 ```
 
 **Option C: No AI (transcription only)**
+
 - Set `ai_provider: none` in settings
 - You'll get transcripts without AI summaries
 
@@ -159,6 +173,7 @@ python run.py --dev
 ```
 
 **User Notes:** While recording, you can write your own notes in the text area. These notes:
+
 - Provide additional context to the AI when generating summaries
 - Are saved in a dedicated "User Notes" section in the final markdown file
 - Support markdown formatting
@@ -167,6 +182,7 @@ python run.py --dev
 ### Keyboard Shortcuts
 
 **Main View:**
+
 - `r` - Start recording
 - `o` - Open in editor
 - `e` - Edit title
@@ -181,12 +197,14 @@ python run.py --dev
 - `↑↓` or `j/k` - Navigate list
 
 **Recording:**
+
 - `s` - Stop and process
 - `x` - Cancel
 
 ### Settings
 
 Press `,` to configure:
+
 - AI provider (OpenAI, Anthropic, OpenRouter, Ollama, none)
 - API keys
 - Whisper model (tiny/base/small/medium/large)
@@ -220,9 +238,9 @@ Need to follow up with Sarah about budget
 
 ## AI Summary
 
-The meeting discussed the updates and changes to be made on the content 
-side of a website, focusing on layout, design, and functionality. The 
-conversation centered around visualizing the proposed changes and finalizing 
+The meeting discussed the updates and changes to be made on the content
+side of a website, focusing on layout, design, and functionality. The
+conversation centered around visualizing the proposed changes and finalizing
 the details for implementation. Key stakeholders were engaged in the discussion.
 
 ### Key Points
@@ -249,10 +267,10 @@ Charlie, [other participants]
 
 ## Full Transcript
 
-**[00:00]** but the actual changes or the full updates are on the 
+**[00:00]** but the actual changes or the full updates are on the
 content side of things.
 
-**[00:06]** If I actually share with you just to help you kind of 
+**[00:06]** If I actually share with you just to help you kind of
 visualize that...
 
 **[00:12]** with what we look like, I'll share my screen right now...
@@ -272,15 +290,15 @@ Shows recording status in your Waybar (idle/recording/processing).
     "custom/meeting-notes",
     // ... your other modules
   ],
-  
+
   "custom/meeting-notes": {
     "exec": "/path/to/meeting-notes/hyprland/waybar-module.sh",
     "return-type": "json",
     "interval": 5,
     "format": "{}",
     "on-click": "$HOME/.local/bin/meeting-notes",
-    "tooltip": true
-  }
+    "tooltip": true,
+  },
 }
 ```
 
@@ -313,6 +331,7 @@ killall waybar && waybar &
 ```
 
 The module shows:
+
 - 󰗠 (gray) - App not running
 - 󰗠 (green) - Ready
 - 󰦕 05:42 (red) - Recording with timer
@@ -329,6 +348,7 @@ bind = SUPER, M, exec, $HOME/.local/bin/meeting-notes
 ## Audio Configuration
 
 **Recording modes** (change in settings):
+
 - `combined` - Mic + System (default, best for meetings)
 - `mic` - Microphone only
 - `system` - System audio only

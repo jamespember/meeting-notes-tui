@@ -59,6 +59,7 @@ if ! command -v pactl &> /dev/null; then
     echo "ERROR: pactl not found. Please install pulseaudio-utils:"
     echo "   Arch:           sudo pacman -S pulseaudio-utils"
     echo "   Ubuntu/Debian:  sudo apt install pulseaudio-utils"
+    echo "   Fedora/RHEL:    sudo dnf install pulseaudio-utils"
     exit 1
 fi
 
@@ -66,6 +67,7 @@ if ! command -v ffmpeg &> /dev/null; then
     echo "ERROR: ffmpeg not found. Please install it:"
     echo "   Arch:           sudo pacman -S ffmpeg"
     echo "   Ubuntu/Debian:  sudo apt install ffmpeg"
+    echo "   Fedora/RHEL:    sudo dnf install ffmpeg"
     exit 1
 fi
 
