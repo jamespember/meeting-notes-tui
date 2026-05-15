@@ -30,7 +30,6 @@ cd meeting-notes
 ```
 
 The setup script will:
-
 1. Check system dependencies (ffmpeg, pulseaudio)
 2. Create a Python virtual environment
 3. Install all Python dependencies
@@ -79,13 +78,11 @@ pip install -r requirements.txt
 **Option A: Cloud AI (Recommended for speed and quality)**
 
 Run the cloud setup script:
-
 ```bash
 ./setup_cloud.sh
 ```
 
 Or configure manually:
-
 - Press `,` in the app → configure API key
 - Supports OpenAI, Anthropic, OpenRouter
 - Keys stored in `~/.config/meeting-notes/config.yaml`
@@ -93,7 +90,6 @@ Or configure manually:
 **Option B: Local AI (Free, private, but slower)**
 
 Install Ollama:
-
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull llama3.2:3b
@@ -173,7 +169,6 @@ python run.py --dev
 ```
 
 **User Notes:** While recording, you can write your own notes in the text area. These notes:
-
 - Provide additional context to the AI when generating summaries
 - Are saved in a dedicated "User Notes" section in the final markdown file
 - Support markdown formatting
@@ -182,7 +177,6 @@ python run.py --dev
 ### Keyboard Shortcuts
 
 **Main View:**
-
 - `r` - Start recording
 - `o` - Open in editor
 - `e` - Edit title
@@ -197,14 +191,12 @@ python run.py --dev
 - `↑↓` or `j/k` - Navigate list
 
 **Recording:**
-
 - `s` - Stop and process
 - `x` - Cancel
 
 ### Settings
 
 Press `,` to configure:
-
 - AI provider (OpenAI, Anthropic, OpenRouter, Ollama, none)
 - API keys
 - Whisper model (tiny/base/small/medium/large)
@@ -297,8 +289,8 @@ Shows recording status in your Waybar (idle/recording/processing).
     "interval": 5,
     "format": "{}",
     "on-click": "$HOME/.local/bin/meeting-notes",
-    "tooltip": true,
-  },
+    "tooltip": true
+  }
 }
 ```
 
@@ -348,7 +340,6 @@ bind = SUPER, M, exec, $HOME/.local/bin/meeting-notes
 ## Audio Configuration
 
 **Recording modes** (change in settings):
-
 - `combined` - Mic + System (default, best for meetings)
 - `mic` - Microphone only
 - `system` - System audio only
