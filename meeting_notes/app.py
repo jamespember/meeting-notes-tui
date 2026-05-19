@@ -510,6 +510,79 @@ class ConfirmDeleteScreen(ModalScreen):
             self.dismiss(False)
 
 
+class ImportPickerScreen(ModalScreen):
+    """Modal that lists audio files in the recordings dir for manual import."""
+
+    CSS = """
+    ImportPickerScreen {
+        align: center middle;
+    }
+    #import-dialog {
+        width: 70%;
+        max-height: 80%;
+        background: $surface;
+        border: round $primary;
+        padding: 1 2;
+    }
+    #import-hint {
+        margin-bottom: 1;
+        color: $text-muted;
+    }
+    #import-list {
+        height: 1fr;
+        border: round $primary-darken-2;
+    }
+    #import-footer {
+        margin-top: 1;
+        color: $text-muted;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Cancel", show=True),
+        Binding("enter", "select", "Process", show=True),
+    ]
+
+    def __init__(self, audio_files: list, recordings_dir: str) -> None:
+        super().__init__()
+        self.audio_files = audio_files
+        self.recordings_dir = recordings_dir
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="import-dialog"):
+            yield Static("Import Recording", classes="panel-title")
+            yield Static(
+                f"Select a file from {self.recordings_dir} to transcribe and summarise:",
+                id="import-hint",
+            )
+            yield ListView(id="import-list")
+            yield Static("↑↓/j/k navigate  Enter select  Esc cancel", id="import-footer")
+
+    def on_mount(self) -> None:
+        lv = self.query_one("#import-list", ListView)
+        for f in self.audio_files:
+            size_mb = f.stat().st_size / (1024 * 1024)
+            label = f"{f.name}  ({size_mb:.1f} MB)"
+            lv.append(ListItem(Static(label)))
+        if self.audio_files:
+            lv.index = 0
+
+    def action_select(self) -> None:
+        lv = self.query_one("#import-list", ListView)
+        if lv.index is not None and lv.index < len(self.audio_files):
+            self.dismiss(self.audio_files[lv.index])
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        self.action_select()
+
+    def on_key(self, event) -> None:
+        if event.key in ("j", "down"):
+            self.query_one("#import-list", ListView).action_cursor_down()
+        elif event.key in ("k", "up"):
+            self.query_one("#import-list", ListView).action_cursor_up()
+
+
 class MeetingNotesApp(App):
     """Main application with Lazygit-inspired layout."""
     
@@ -656,6 +729,7 @@ class MeetingNotesApp(App):
     
     BINDINGS = [
         Binding("r", "start_recording", "Record", show=True),
+        Binding("i", "import_recording", "Import", show=True),
         Binding("s", "stop_recording", "Stop", show=False, priority=True),
         Binding("x", "cancel_recording", "Cancel", show=False, priority=True),
         Binding("o", "open_in_editor", "Open", show=True),
@@ -881,6 +955,8 @@ class MeetingNotesApp(App):
             return not self.is_recording
         elif action in ["stop_recording", "cancel_recording"]:
             return self.is_recording
+        elif action == "import_recording":
+            return not self.is_recording
         return True  # All other actions always available
     
     def update_recording_timer(self) -> None:
@@ -898,6 +974,34 @@ class MeetingNotesApp(App):
             except Exception:
                 pass  # View might not be mounted yet
     
+    def action_import_recording(self) -> None:
+        """Pick an existing audio file from the recordings dir and process it."""
+        recordings_dir = Path(self.config.recordings_dir).expanduser()
+        recordings_dir.mkdir(parents=True, exist_ok=True)
+
+        # Collect supported audio files
+        extensions = ("*.wav", "*.mp3", "*.m4a", "*.ogg", "*.flac", "*.mp4")
+        audio_files = []
+        for pattern in extensions:
+            audio_files.extend(recordings_dir.glob(pattern))
+        audio_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+        if not audio_files:
+            self.notify(
+                f"No audio files found in {recordings_dir}. "
+                "Drop a .wav/.m4a/.mp3 file there and try again.",
+                severity="warning",
+            )
+            return
+
+        def on_file_selected(selected_path) -> None:
+            if selected_path:
+                self.notify("Processing imported recording...", severity="information")
+                self._write_status_file("processing")
+                self.process_recording(str(selected_path), meeting_title=None, user_notes="")
+
+        self.push_screen(ImportPickerScreen(audio_files, self.config.recordings_dir), on_file_selected)
+
     def action_start_recording(self) -> None:
         """Start recording and switch to full-screen recording view."""
         logger.info("Starting recording")
