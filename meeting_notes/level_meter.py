@@ -33,7 +33,14 @@ _CHUNK_BYTES = (_RATE * _BYTES_PER_SAMPLE * _CHUNK_MS) // 1000
 
 
 def _peak_s16le(buf: bytes) -> int:
-    """Return peak absolute amplitude (0..32767) for an s16le byte buffer."""
+    """Return peak absolute amplitude (0..32767) for an s16le byte buffer.
+
+    Clamped to 32767 because int16-min is -32768 but its magnitude (32768)
+    doesn't fit in int16-positive. ``audioop.max`` on Python 3.12 returns
+    32768 for buffers containing -32768, while our manual fallback returns
+    32767; we normalise to 32767 here so the contract holds across both
+    Python versions (and across the audioop / no-audioop code paths).
+    """
     if not buf:
         return 0
     try:
@@ -41,7 +48,7 @@ def _peak_s16le(buf: bytes) -> int:
         # in 3.14 via a third-party shim if installed. Fall back to struct.
         import audioop  # type: ignore[import]
 
-        return audioop.max(buf, _BYTES_PER_SAMPLE)
+        return min(audioop.max(buf, _BYTES_PER_SAMPLE), 32767)
     except Exception:
         # Trim any odd trailing byte
         n = (len(buf) // _BYTES_PER_SAMPLE) * _BYTES_PER_SAMPLE
