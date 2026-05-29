@@ -75,6 +75,46 @@ def test_validate_none_provider_is_always_valid():
     assert ok, err
 
 
+def test_default_whisper_device_is_cpu():
+    """CPU is the safe default — matches README's 'CPU-based' promise and
+    avoids broken-CUDA-wheel crashes."""
+    cfg = AppConfig()
+    assert cfg.whisper_device == "cpu"
+
+
+def test_validate_rejects_unknown_whisper_device():
+    cfg = AppConfig(ai_provider="none", whisper_device="tpu")
+    ok, err = validate_config(cfg)
+    assert not ok
+    assert "whisper_device" in err.lower()
+
+
+def test_validate_accepts_cuda_and_auto_whisper_devices():
+    for device in ("cpu", "cuda", "auto"):
+        cfg = AppConfig(ai_provider="none", whisper_device=device)
+        ok, err = validate_config(cfg)
+        assert ok, f"{device}: {err}"
+
+
+def test_default_audio_devices_are_empty_strings():
+    """Empty string == 'use system default'."""
+    cfg = AppConfig()
+    assert cfg.mic_device == ""
+    assert cfg.system_device == ""
+
+
+def test_audio_devices_roundtrip():
+    cfg = AppConfig.from_dict({
+        "mic_device": "alsa_input.usb-X",
+        "system_device": "alsa_output.pci-Y",
+    })
+    assert cfg.mic_device == "alsa_input.usb-X"
+    assert cfg.system_device == "alsa_output.pci-Y"
+    d = cfg.to_dict()
+    assert d["mic_device"] == "alsa_input.usb-X"
+    assert d["system_device"] == "alsa_output.pci-Y"
+
+
 def test_to_safe_dict_redacts_keys():
     """API keys must be redacted in the safe dict (used for logging)."""
     cfg = AppConfig(

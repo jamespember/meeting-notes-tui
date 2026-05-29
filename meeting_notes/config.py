@@ -28,12 +28,22 @@ class AppConfig:
     
     # Other settings
     whisper_model: str = "base"
+    # Whisper compute device: "cpu" (default, safe everywhere), "cuda" (force GPU),
+    # or "auto" (let whisper/torch decide). "cpu" matches the README's
+    # privacy-first CPU pipeline and dodges broken-CUDA-wheel crashes like
+    # "no kernel image is available for execution on the device".
+    whisper_device: str = "cpu"
     notes_dir: str = "notes"
     recordings_dir: str = "recordings"
     transcripts_dir: str = "transcripts"
     editor: str = "nvim"
     terminal_file_browser: str = ""  # Terminal file browser (ranger, vidir, nnn, lf, vifm, yazi, etc.)
     recording_mode: str = "combined"
+    # Per-device pinning. Empty string = use system default. Names should
+    # match `pactl list sources/sinks short` output (e.g.
+    # "alsa_input.pci-0000_00_1f.3.analog-stereo").
+    mic_device: str = ""
+    system_device: str = ""  # Output sink whose monitor we record from
     recording_retention_days: int = 30  # Auto-delete .wav files older than this on startup (0 to disable)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -184,7 +194,12 @@ def validate_config(config: AppConfig) -> tuple[bool, Optional[str]]:
     valid_whisper = ["tiny", "base", "small", "medium", "large"]
     if config.whisper_model not in valid_whisper:
         return False, f"Invalid whisper_model: {config.whisper_model}. Must be one of {valid_whisper}"
-    
+
+    # Validate whisper device
+    valid_devices = ["cpu", "cuda", "auto"]
+    if config.whisper_device not in valid_devices:
+        return False, f"Invalid whisper_device: {config.whisper_device}. Must be one of {valid_devices}"
+
     # Validate recording mode
     valid_modes = ["mic", "system", "combined"]
     if config.recording_mode not in valid_modes:
