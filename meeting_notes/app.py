@@ -18,12 +18,14 @@ from textual.reactive import reactive
 from textual.screen import Screen, ModalScreen
 from textual import work
 
-from meeting_notes.recorder import AudioRecorder
+from meeting_notes.recorder import AudioRecorder, list_active_sink_inputs
 from meeting_notes.transcriber import WhisperTranscriber
 from meeting_notes.note_maker import NoteMaker
 from meeting_notes.config import load_config, save_config, AppConfig, validate_config
 from meeting_notes.settings import SettingsScreen
 from meeting_notes.logger import setup_logging, get_logger
+from meeting_notes.level_meter import MicLevelMeter
+from meeting_notes.audio_test_screen import AudioTestScreen
 
 # Initialize logging
 setup_logging(debug=False)
@@ -44,12 +46,37 @@ class RecordingView(Container):
                 with Vertical(id="recording-left-column"):
                     # Status header
                     yield Static("🔴  RECORDING", id="recording-status")
-                    
+
                     # Timer display
                     yield Static("00:00", id="recording-timer")
-                    
-                    # Audio device info
+
+                    # Audio device info — populated at start_recording with
+                    # mic + resolved system sink (so the user can see
+                    # whether auto-pick chose the right sink).
                     yield Static("", id="audio-device-info")
+
+                    # "Audio source" panel: what apps are currently routing
+                    # audio to our captured sink. If this stays empty for
+                    # long while the meeting is in progress, it's the
+                    # strongest signal that the system leg won't capture
+                    # the other participants.
+                    yield Static("Audio sources:", id="audio-sources-label")
+                    yield Static(
+                        "[dim]probing…[/dim]",
+                        id="audio-sources-list",
+                    )
+
+                    # Live mic level meter (real-time visual confirmation
+                    # that audio is actually reaching the system).
+                    yield Static("Mic level:", id="level-meter-label")
+                    yield Static("[dim]waiting…[/dim]", id="level-meter-bar")
+
+                    # Live system-audio level meter. This is what would
+                    # have saved James' first real meeting: if this bar
+                    # stays flat while the meeting is in progress, the
+                    # other participants are NOT being captured.
+                    yield Static("System audio level:", id="system-level-meter-label")
+                    yield Static("[dim]waiting…[/dim]", id="system-level-meter-bar")
                 
                 # Right column: User input fields
                 with Vertical(id="recording-right-column"):
@@ -72,7 +99,23 @@ class RecordingView(Container):
         seconds = time % 60
         timer = self.query_one("#recording-timer", Static)
         timer.update(f"{minutes:02d}:{seconds:02d}")
-    
+
+    def on_mount(self) -> None:
+        """Move focus AWAY from input fields when the recording view mounts.
+
+        Textual auto-focuses the first focusable widget on mount, which is
+        the meeting-title Input. That means 's' (stop) and 'x' (cancel)
+        keypresses go into the title field instead of triggering the
+        bindings — extremely surprising behavior the first time you try
+        to stop a recording. We explicitly unfocus so the screen-level
+        bindings handle keys until the user deliberately clicks/tabs
+        into the title or notes area.
+        """
+        try:
+            self.screen.set_focus(None)
+        except Exception:
+            pass
+
     def on_key(self, event) -> None:
         """Handle key events for the recording view."""
         if event.key == "escape":
@@ -603,6 +646,30 @@ class MeetingNotesApp(App):
         border: solid $primary;
         width: 100%;
     }
+
+    #audio-sources-label,
+    #level-meter-label,
+    #system-level-meter-label {
+        text-align: center;
+        color: $text-muted;
+        margin-top: 1;
+    }
+
+    #audio-sources-list {
+        text-align: center;
+        color: $text;
+        margin-bottom: 1;
+        padding: 0 1;
+        width: 100%;
+    }
+
+    #level-meter-bar,
+    #system-level-meter-bar {
+        text-align: center;
+        color: $success;
+        margin-bottom: 1;
+        width: 100%;
+    }
     
     #title-label {
         color: $text-muted;
@@ -667,6 +734,7 @@ class MeetingNotesApp(App):
         Binding("t", "view_transcript", "Transcript", show=True),
         Binding("T", "manage_tags", "Tags", show=True),
         Binding("comma", "open_settings", "Settings", show=True),
+        Binding("A", "audio_test", "Audio Test", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
     
@@ -685,7 +753,10 @@ class MeetingNotesApp(App):
         
         # Initialize components with config values
         self.recorder: Optional[AudioRecorder] = None
-        self.transcriber = WhisperTranscriber(self.config.whisper_model)
+        self.transcriber = WhisperTranscriber(
+            self.config.whisper_model,
+            device=self.config.whisper_device,
+        )
         
         # Get appropriate API key based on provider (check config first, then env vars)
         api_key = None
@@ -707,8 +778,35 @@ class MeetingNotesApp(App):
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         self.is_recording = False
         self.timer_interval = None
+        # Refreshes the "audio sources" panel in the recording view so
+        # the user can see in real time which apps are routing to the
+        # captured sink.
+        self._routing_refresh_interval = None
         self.recording_start_time = None
         self.all_note_paths = []  # Store all note paths for filtering
+        self._level_meter: Optional[MicLevelMeter] = None
+        self._system_level_meter: Optional[MicLevelMeter] = None
+        # Updates per second from the meter thread are >> our redraw budget.
+        # We coalesce to ~10 Hz by tracking the last render timestamp.
+        self._last_level_render = 0.0
+        self._last_system_level_render = 0.0
+        # Peak amplitude seen on each leg during the current recording —
+        # logged periodically so we can confirm in the log file that audio
+        # was actually flowing. Resets at start_recording time.
+        self._peak_mic_level = 0.0
+        self._peak_system_level = 0.0
+        self._last_peak_log = 0.0
+        # Whether we've already emitted the "system audio looks silent"
+        # warning for this recording session. Without this we'd spam the
+        # log every 5 seconds for entire meetings where the user is just
+        # talking (e.g. a 1:1 with no screen share). One warning is
+        # enough; the level meter bar is the live signal.
+        self._warned_silent_system = False
+        # Track apps we've already warned about routing to the wrong sink.
+        # Cleared at recording start. Prevents notification spam when an
+        # app keeps a stream open on a non-captured sink for the whole
+        # meeting.
+        self._warned_misrouted_apps: set[str] = set()
 
         # Clean up old recordings on startup
         self._cleanup_old_recordings()
@@ -770,7 +868,9 @@ class MeetingNotesApp(App):
         self.recorder = AudioRecorder(
             output_dir=self.config.recordings_dir,
             mode=self.config.recording_mode,
-            dev_mode=self.dev_mode
+            dev_mode=self.dev_mode,
+            mic_device=self.config.mic_device or None,
+            system_device=self.config.system_device or None,
         )
         
         # Clear status file on startup
@@ -789,19 +889,31 @@ class MeetingNotesApp(App):
     
     def on_unmount(self) -> None:
         """Cleanup when app exits."""
-        # Stop any active recording to clean up processes
+        # Kill any active recording to clean up processes. We use
+        # cancel_recording rather than stop_recording so we don't leave a
+        # background ffmpeg mix running after the TUI is gone.
         if self.recorder and self.recorder.is_recording():
             try:
-                self.recorder.stop_recording()
+                self.recorder.cancel_recording()
             except Exception:
                 pass  # Ignore errors during shutdown
-        
+
         # Stop timer if running
         if self.timer_interval:
             try:
                 self.timer_interval.stop()
             except Exception:
                 pass
+
+        if self._routing_refresh_interval:
+            try:
+                self._routing_refresh_interval.stop()
+            except Exception:
+                pass
+
+        # Always stop the level meter on shutdown so its parec subprocess
+        # doesn't outlive the TUI.
+        self._stop_level_meter()
     
     def load_meetings(self):
         """Load meeting notes from disk."""
@@ -881,6 +993,10 @@ class MeetingNotesApp(App):
             return not self.is_recording
         elif action in ["stop_recording", "cancel_recording"]:
             return self.is_recording
+        elif action == "audio_test":
+            # Hide from the footer while recording — running the test mid-meeting
+            # would fight the recorder for the same source.
+            return not self.is_recording
         return True  # All other actions always available
     
     def update_recording_timer(self) -> None:
@@ -888,47 +1004,299 @@ class MeetingNotesApp(App):
         if self.is_recording and self.recording_start_time:
             elapsed = int(time.time() - self.recording_start_time)
             duration_str = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
-            
+
             # Update status file with current duration
             self._write_status_file("recording", duration=duration_str)
-            
+
             try:
                 recording_view = self.query_one(RecordingView)
                 recording_view.elapsed_time = elapsed
             except Exception:
                 pass  # View might not be mounted yet
-    
+
+    def update_audio_sources_panel(self) -> None:
+        """Refresh the 'Audio sources' panel with what's currently playing.
+
+        Pulls `pactl list sink-inputs`, filters to the sink we're recording,
+        and shows app names. If nothing is routing to our sink, we say so
+        loudly — that's the user-actionable signal that the system-audio
+        leg won't capture other meeting participants.
+        """
+        if not self.is_recording or self.recorder is None:
+            return
+
+        try:
+            recording_view = self.query_one(RecordingView)
+            widget = recording_view.query_one("#audio-sources-list", Static)
+        except Exception:
+            return
+
+        try:
+            target_sink = self.recorder.resolved_system_sink
+            active = list_active_sink_inputs(include_corked=False)
+            on_target = []
+            elsewhere = []
+            # active sink-inputs reference sinks by numeric index;
+            # we need to map to names to compare against the target.
+            from meeting_notes.recorder import _sink_index_to_name
+
+            idx_to_name = _sink_index_to_name()
+            for si in active:
+                sink_name = idx_to_name.get(si.sink, si.sink)
+                label = si.application or si.media_name or "?"
+                if target_sink and sink_name == target_sink:
+                    on_target.append(label)
+                else:
+                    elsewhere.append((label, sink_name))
+
+            lines = []
+            if on_target:
+                lines.append(
+                    f"[green]✓ Capturing:[/green] {', '.join(sorted(set(on_target)))}"
+                )
+            else:
+                lines.append(
+                    "[yellow]⚠ Nothing routing to the captured sink right now[/yellow]"
+                )
+            if elsewhere:
+                # Surface mis-routed audio so the user can fix it on the fly
+                pairs = ", ".join(
+                    f"{app} → {sink}" for app, sink in elsewhere[:3]
+                )
+                lines.append(f"[red]Playing elsewhere:[/red] {pairs}")
+            widget.update("\n".join(lines))
+
+            # Surface a TOAST notification when a meeting-style app appears
+            # on a non-captured sink for the first time. This is the
+            # high-stakes moment: "Zoom just opened on your laptop speakers
+            # instead of the Scarlett — your system audio is silent right
+            # now". We only fire once per app per recording session so we
+            # don't spam the user.
+            _MEETING_APP_HINTS = (
+                "zoom", "meet", "chrome", "chromium", "firefox", "teams",
+                "slack", "discord", "skype", "webex", "jitsi",
+            )
+            for app, sink_name in elsewhere:
+                if app in self._warned_misrouted_apps:
+                    continue
+                app_l = app.lower()
+                if not any(h in app_l for h in _MEETING_APP_HINTS):
+                    continue
+                self._warned_misrouted_apps.add(app)
+                msg = (
+                    f"⚠ {app} just started playing on {sink_name} — "
+                    f"you're capturing {target_sink}. "
+                    f"This audio will NOT be in your meeting notes."
+                )
+                logger.warning(f"misrouted-app alert: {msg}")
+                try:
+                    self.notify(msg, severity="warning", timeout=12)
+                except Exception:
+                    pass
+
+            # Also log so we have an audit trail after the recording finishes
+            logger.info(
+                f"audio sources @ {int(time.time() - (self.recording_start_time or 0))}s: "
+                f"on_target={on_target!r}, elsewhere={elsewhere!r}, "
+                f"target_sink={target_sink!r}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"update_audio_sources_panel failed: {exc}")
+
+    @staticmethod
+    def _format_level_bar(level: float, width: int = 30) -> str:
+        filled = int(round(level * width))
+        if level >= 0.9:
+            color = "red"
+        elif level >= 0.7:
+            color = "yellow"
+        else:
+            color = "green"
+        bar = f"[{color}]{'█' * filled}[/{color}][dim]{'░' * (width - filled)}[/dim]"
+        return f"{bar}  {int(level * 100):3d}%"
+
+    def _maybe_log_peaks(self) -> None:
+        """Once every ~5s, log the running peak levels so the file log can
+        confirm audio was actually flowing during a recording. This is what
+        makes 'I recorded for 12 minutes and only my voice came through'
+        diagnosable after the fact."""
+        now = time.monotonic()
+        if now - self._last_peak_log < 5.0:
+            return
+        self._last_peak_log = now
+        logger.info(
+            f"level-meter peaks (rolling 5s window): "
+            f"mic={self._peak_mic_level * 100:.0f}%, "
+            f"system={self._peak_system_level * 100:.0f}%"
+        )
+        # Only warn ONCE per recording about a flat system meter. After
+        # the first warning the live system-audio bar is the user's
+        # ongoing signal; we don't need to spam the log every 5s for an
+        # hour-long meeting where the user happens to be just talking
+        # (no shared video / screen-share / participants speaking).
+        if self._peak_system_level < 0.01 and not self._warned_silent_system:
+            logger.warning(
+                "level-meter: system audio peak < 1% in the last 5s — "
+                "monitor capture may be silent. Check what's playing "
+                "(this warning will not repeat for this recording)."
+            )
+            self._warned_silent_system = True
+        # Reset rolling peaks for the next window
+        self._peak_mic_level = 0.0
+        self._peak_system_level = 0.0
+
+    def _render_level(self, level: float) -> None:
+        """Render the mic level-meter bar. Called from the meter thread."""
+        if level > self._peak_mic_level:
+            self._peak_mic_level = level
+        self._maybe_log_peaks()
+
+        now = time.monotonic()
+        if now - self._last_level_render < 0.08:
+            return
+        self._last_level_render = now
+
+        text = self._format_level_bar(level)
+
+        def _update():
+            try:
+                view = self.query_one(RecordingView)
+                view.query_one("#level-meter-bar", Static).update(text)
+            except Exception:
+                pass  # view torn down; meter will be stopped shortly
+
+        try:
+            self.call_from_thread(_update)
+        except Exception:
+            pass
+
+    def _render_system_level(self, level: float) -> None:
+        """Render the system-audio level-meter bar. Called from the meter thread."""
+        if level > self._peak_system_level:
+            self._peak_system_level = level
+        self._maybe_log_peaks()
+
+        now = time.monotonic()
+        if now - self._last_system_level_render < 0.08:
+            return
+        self._last_system_level_render = now
+
+        text = self._format_level_bar(level)
+
+        def _update():
+            try:
+                view = self.query_one(RecordingView)
+                view.query_one("#system-level-meter-bar", Static).update(text)
+            except Exception:
+                pass
+
+        try:
+            self.call_from_thread(_update)
+        except Exception:
+            pass
+
+    def _start_level_meter(self) -> None:
+        """Start both the mic and system-audio level meters and reset peaks."""
+        self._peak_mic_level = 0.0
+        self._peak_system_level = 0.0
+        self._last_peak_log = time.monotonic()
+
+        # Mic meter
+        if self._level_meter is None and self.config.recording_mode in ("mic", "combined"):
+            device = self.config.mic_device or None
+            logger.info(f"level-meter[mic]: starting on device={device or 'default'}")
+            meter = MicLevelMeter(on_level=self._render_level, device=device)
+            if not meter.is_available():
+                logger.warning(
+                    "level-meter[mic]: unavailable (no parec/pw-record); skipping"
+                )
+            else:
+                meter.start()
+                self._level_meter = meter
+
+        # System-audio meter: reads from the SAME monitor source the recorder is
+        # using, so the user sees exactly what's being captured to disk.
+        if (
+            self._system_level_meter is None
+            and self.config.recording_mode in ("system", "combined")
+            and self.recorder is not None
+        ):
+            sink = self.recorder.resolved_system_sink or self.config.system_device or None
+            monitor = None
+            if sink:
+                monitor = f"{sink}.monitor"
+            logger.info(
+                f"level-meter[system]: starting on sink={sink!r}, monitor={monitor!r}"
+            )
+            sys_meter = MicLevelMeter(on_level=self._render_system_level, device=monitor)
+            if not sys_meter.is_available():
+                logger.warning(
+                    "level-meter[system]: unavailable (no parec/pw-record); skipping"
+                )
+            else:
+                sys_meter.start()
+                self._system_level_meter = sys_meter
+
+    def _stop_level_meter(self) -> None:
+        """Stop both level meters and log the final peaks."""
+        # Final peak log so we have something even if we never hit the 5s window
+        logger.info(
+            f"level-meter: final peaks "
+            f"mic={self._peak_mic_level * 100:.0f}%, "
+            f"system={self._peak_system_level * 100:.0f}%"
+        )
+        for attr in ("_level_meter", "_system_level_meter"):
+            meter = getattr(self, attr, None)
+            if meter is not None:
+                try:
+                    meter.stop()
+                    logger.debug(f"level-meter: stopped {attr}")
+                except Exception as exc:
+                    logger.debug(f"level-meter: error stopping {attr}: {exc}")
+                setattr(self, attr, None)
+
     def action_start_recording(self) -> None:
         """Start recording and switch to full-screen recording view."""
-        logger.info("Starting recording")
+        logger.info(
+            f"action_start_recording: mode={self.config.recording_mode}, "
+            f"mic_device={self.config.mic_device!r}, "
+            f"system_device={self.config.system_device!r}"
+        )
         if self.recorder and not self.recorder.is_recording():
             try:
-                # Hide main panels
-                main_panels = self.query_one("#main-panels", Container)
-                main_panels.display = False
-                
-                # Mount recording view
-                recording_view = RecordingView()
-                self.mount(recording_view)
-                
-                # Start actual recording
+                # Start the actual recorder FIRST. If it fails (bad device,
+                # missing tool, busy hardware) we want to surface the error
+                # without having torn down the main UI.
                 self.recorder.start_recording()
                 self.is_recording = True
                 self.recording_start_time = time.time()
-                logger.info("Recording started successfully")
-                
+                # Reset mid-recording warning state for this session
+                self._warned_misrouted_apps = set()
+                self._warned_silent_system = False
+                logger.info(
+                    f"action_start_recording: recorder running, "
+                    f"resolved_system_sink={self.recorder.resolved_system_sink!r}"
+                )
+
+                # Now swap UI to recording view
+                main_panels = self.query_one("#main-panels", Container)
+                main_panels.display = False
+                recording_view = RecordingView()
+                self.mount(recording_view)
+
                 # Update status file for Waybar
                 self._write_status_file("recording", duration="00:00")
-                
+
                 # Get and display audio device info
                 device_info = self.recorder.get_audio_device_info()
+                logger.info(f"action_start_recording: device_info={device_info}")
                 mode_display = {
                     'mic': '🎤 Microphone Only',
                     'system': '🔊 System Audio Only',
                     'combined': '🎤🔊 Microphone + System Audio'
                 }
                 info_lines = [mode_display.get(device_info['mode'], device_info['mode'])]
-                
+
                 if 'mic_device' in device_info:
                     info_lines.append(f"Mic: {device_info['mic_device']}")
                 if 'system_device' in device_info:
@@ -940,7 +1308,20 @@ class MeetingNotesApp(App):
                 
                 # Start timer updates (every 1 second)
                 self.timer_interval = self.set_interval(1.0, self.update_recording_timer)
-                
+
+                # Start the live level meters (mic + system audio).
+                # Real-time visual feedback that audio is actually arriving
+                # — and CRUCIALLY that system-audio capture isn't silent.
+                self._start_level_meter()
+
+                # Refresh the "what is playing right now" list every 3 seconds
+                # so the user can see when meeting participants start/stop
+                # being captured.
+                self._routing_refresh_interval = self.set_interval(
+                    3.0, self.update_audio_sources_panel
+                )
+                self.update_audio_sources_panel()  # populate immediately
+
                 # Update footer bindings
                 self.refresh_bindings()
                 
@@ -962,13 +1343,17 @@ class MeetingNotesApp(App):
             return
         
         try:
-            # Stop timer
+            # Stop timer + level meter + routing refresh
             if self.timer_interval:
                 self.timer_interval.stop()
                 self.timer_interval = None
-            
-            # Stop and discard recording
-            self.recorder.stop_recording()
+            if self._routing_refresh_interval:
+                self._routing_refresh_interval.stop()
+                self._routing_refresh_interval = None
+            self._stop_level_meter()
+
+            # Discard recording (kills processes, deletes files, no ffmpeg mix)
+            self.recorder.cancel_recording()
             self.is_recording = False
             self.recording_start_time = None
             logger.info("Recording cancelled successfully")
@@ -1020,17 +1405,44 @@ class MeetingNotesApp(App):
                 except Exception:
                     pass  # No title input found
                 
-                # Stop timer
+                # Stop timer + level meter + routing refresh
                 if self.timer_interval:
                     self.timer_interval.stop()
                     self.timer_interval = None
-                
+                if self._routing_refresh_interval:
+                    self._routing_refresh_interval.stop()
+                    self._routing_refresh_interval = None
+                self._stop_level_meter()
+
                 # Stop recording
                 audio_path = self.recorder.stop_recording()
                 self.is_recording = False
                 self.recording_start_time = None
                 logger.info(f"Recording stopped. Audio saved to: {audio_path}")
-                
+
+                # Surface per-leg silence warnings BEFORE the user navigates
+                # away. This is the bug that ate James' first real meeting:
+                # silent system-audio leg → transcript only has his voice.
+                if getattr(self.recorder, "last_system_silent", False):
+                    self.notify(
+                        "⚠ System audio leg looked silent during this recording. "
+                        "Other participants may be missing. Temp files preserved.",
+                        severity="warning",
+                        timeout=15,
+                    )
+                if getattr(self.recorder, "last_mic_silent", False):
+                    self.notify(
+                        "⚠ Microphone leg looked silent during this recording. "
+                        "Your voice may be missing. Temp files preserved.",
+                        severity="warning",
+                        timeout=15,
+                    )
+                preserved = getattr(self.recorder, "last_temp_files", [])
+                if preserved:
+                    logger.warning(
+                        f"Preserved temp files for manual recovery: {preserved}"
+                    )
+
                 # Update status to processing
                 self._write_status_file("processing")
                 
@@ -1583,6 +1995,18 @@ class MeetingNotesApp(App):
     def action_open_settings(self) -> None:
         """Open the settings screen."""
         self.push_screen(SettingsScreen(self.config), self.handle_settings_closed)
+
+    def action_audio_test(self) -> None:
+        """Open the audio test / diagnostics screen.
+
+        Disabled while a real recording is in flight so the test capture
+        can't fight the meeting capture for the same source.
+        """
+        if self.is_recording:
+            self.notify("Stop the current recording before running the audio test.",
+                        severity="warning")
+            return
+        self.push_screen(AudioTestScreen(self.config))
     
     def handle_settings_closed(self, new_config: Optional[AppConfig]) -> None:
         """Handle settings screen closing."""
@@ -1591,7 +2015,10 @@ class MeetingNotesApp(App):
             self.config = new_config
             
             # Reinitialize components with new config
-            self.transcriber = WhisperTranscriber(self.config.whisper_model)
+            self.transcriber = WhisperTranscriber(
+                self.config.whisper_model,
+                device=self.config.whisper_device,
+            )
             
             # Get appropriate API key based on provider (check config first, then env vars)
             api_key = None
@@ -1617,7 +2044,9 @@ class MeetingNotesApp(App):
                 self.recorder = AudioRecorder(
                     output_dir=self.config.recordings_dir,
                     mode=self.config.recording_mode,
-                    dev_mode=self.dev_mode
+                    dev_mode=self.dev_mode,
+                    mic_device=self.config.mic_device or None,
+                    system_device=self.config.system_device or None,
                 )
             
             # Reload meetings from potentially new directory

@@ -17,6 +17,7 @@ from meeting_notes.ollama_utils import (
     install_model,
     check_ollama_installed
 )
+from meeting_notes.recorder import list_input_devices, list_output_devices
 
 
 class InstallingModelScreen(ModalScreen):
@@ -583,14 +584,138 @@ class SettingsScreen(Screen):
     def render_audio_section(self) -> list:
         """Render Audio section."""
         widgets = []
-        
+
         widgets.append(Static("🎤 Audio Settings", classes="settings-section-title"))
-        
+
+        # General orientation: mic and sink are INDEPENDENT. People often
+        # ask whether their webcam-mic + USB-interface-headphones combo
+        # is supported — it is. The mic leg and system leg are captured
+        # separately and mixed at the end, so they don't have to live on
+        # the same device.
+        widgets.append(Static(
+            "Microphone and system-audio sink are independent. You can mix "
+            "and match (e.g. webcam mic + Scarlett headphones); the recorder "
+            "captures each leg separately and mixes them at the end.",
+            classes="settings-hint",
+        ))
+        widgets.append(Static(""))
+
+        # Recording mode
         widgets.append(Static("Recording Mode", classes="settings-label"))
-        # TODO: Add proper Select widget once implemented
-        widgets.append(Static(f"Current: {self.config['recording_mode']}", classes="settings-hint"))
-        widgets.append(Static("(Mode selection coming soon)", classes="settings-hint"))
-        
+        current_mode = self.config.get("recording_mode", "combined")
+        modes = [
+            ("combined", "🎤🔊 Mic + System (default)"),
+            ("mic", "🎤 Microphone only"),
+            ("system", "🔊 System audio only"),
+        ]
+        for mode_id, mode_label in modes:
+            marker = "●" if mode_id == current_mode else "○"
+            btn = Button(
+                f"{marker} {mode_label}",
+                id=f"audiomode-{mode_id}",
+                variant="primary" if mode_id == current_mode else "default",
+            )
+            btn.mode_id = mode_id
+            widgets.append(btn)
+
+        widgets.append(Static(""))
+
+        # Microphone device
+        widgets.append(Static("Microphone", classes="settings-label"))
+        try:
+            mics = list_input_devices()
+        except Exception as exc:  # noqa: BLE001
+            mics = []
+            widgets.append(Static(f"⚠️  Could not list mics: {exc}", classes="settings-hint"))
+
+        current_mic = self.config.get("mic_device", "") or ""
+        # "default" pseudo-device == empty string in config
+        default_marker = "●" if current_mic == "" else "○"
+        default_btn = Button(
+            f"{default_marker} System default",
+            id="micdev-__default__",
+            variant="primary" if current_mic == "" else "default",
+        )
+        default_btn.device_name = ""
+        widgets.append(default_btn)
+
+        for idx, dev in enumerate(mics):
+            is_current = dev.name == current_mic
+            marker = "●" if is_current else "○"
+            label = f"{marker} {dev.display}"
+            btn = Button(
+                label,
+                id=f"micdev-{idx}",
+                variant="primary" if is_current else "default",
+            )
+            btn.device_name = dev.name
+            widgets.append(btn)
+
+        widgets.append(Static(""))
+
+        # System audio (output sink whose monitor we record)
+        widgets.append(Static("System Audio Source (sink monitor)", classes="settings-label"))
+        try:
+            sinks = list_output_devices()
+        except Exception as exc:  # noqa: BLE001
+            sinks = []
+            widgets.append(Static(f"⚠️  Could not list sinks: {exc}", classes="settings-hint"))
+
+        current_sink = self.config.get("system_device", "") or ""
+        default_marker = "●" if current_sink == "" else "○"
+        default_btn = Button(
+            f"{default_marker} System default sink",
+            id="sinkdev-__default__",
+            variant="primary" if current_sink == "" else "default",
+        )
+        default_btn.device_name = ""
+        widgets.append(default_btn)
+
+        for idx, dev in enumerate(sinks):
+            is_current = dev.name == current_sink
+            marker = "●" if is_current else "○"
+            btn = Button(
+                f"{marker} {dev.display}",
+                id=f"sinkdev-{idx}",
+                variant="primary" if is_current else "default",
+            )
+            btn.device_name = dev.name
+            widgets.append(btn)
+
+        widgets.append(Static(""))
+
+        # Whisper device (CPU vs CUDA vs auto)
+        widgets.append(Static("Whisper Compute Device", classes="settings-label"))
+        current_device = self.config.get("whisper_device", "cpu")
+        for dev_id, label, desc in [
+            ("cpu", "CPU", "Safe everywhere; matches the documented privacy-first default"),
+            ("cuda", "CUDA (GPU)", "Faster, but requires a working torch+CUDA install"),
+            ("auto", "Auto", "Let torch pick — falls back to CPU if CUDA fails"),
+        ]:
+            is_current = dev_id == current_device
+            marker = "●" if is_current else "○"
+            btn = Button(
+                f"{marker} {label}",
+                id=f"whisperdev-{dev_id}",
+                variant="primary" if is_current else "default",
+            )
+            btn.device_id = dev_id
+            widgets.append(btn)
+            if is_current:
+                widgets.append(Static(f"  → {desc}", classes="settings-hint"))
+
+        widgets.append(Static(""))
+        widgets.append(Button(
+            "🎧 Run Audio Test",
+            variant="primary",
+            id="run-audio-test-button",
+        ))
+        widgets.append(Static(
+            "Records a short clip with the chosen devices, plays it back, "
+            "and tells you whether your audio pipeline is healthy.",
+            classes="settings-hint",
+        ))
+
         return widgets
     
     def render_editor_section(self) -> list:
@@ -651,9 +776,37 @@ class SettingsScreen(Screen):
                 self.config["ai_model"] = event.button.model_name  # Sync ai_model
                 await self.refresh_content()
         
+        # Audio: recording mode
+        elif button_id and button_id.startswith("audiomode-"):
+            if hasattr(event.button, "mode_id"):
+                self.config["recording_mode"] = event.button.mode_id
+                await self.refresh_content()
+
+        # Audio: mic device
+        elif button_id and button_id.startswith("micdev-"):
+            if hasattr(event.button, "device_name"):
+                self.config["mic_device"] = event.button.device_name
+                await self.refresh_content()
+
+        # Audio: system sink
+        elif button_id and button_id.startswith("sinkdev-"):
+            if hasattr(event.button, "device_name"):
+                self.config["system_device"] = event.button.device_name
+                await self.refresh_content()
+
+        # Audio: Whisper compute device
+        elif button_id and button_id.startswith("whisperdev-"):
+            if hasattr(event.button, "device_id"):
+                self.config["whisper_device"] = event.button.device_id
+                await self.refresh_content()
+
         # Install model
         elif button_id == "install-model-button":
             self.action_install_model()
+
+        # Run audio test
+        elif button_id == "run-audio-test-button":
+            self.action_run_audio_test()
         
         # Save/Cancel
         elif button_id == "save-button":
@@ -702,6 +855,26 @@ class SettingsScreen(Screen):
             self.app.push_screen(InstallModelScreen(installed), self.handle_install_model)
         except Exception as e:
             self.app.notify(f"Error: {e}", severity="error")
+
+    def action_run_audio_test(self) -> None:
+        """Open the audio test screen using the *currently edited* config.
+
+        We deliberately use the in-flight ``self.config`` dict (not the
+        original AppConfig) so the user can pick a new device and test it
+        before saving — important when the existing config points at a
+        broken device.
+        """
+        # Lazy import to avoid a circular import (audio_test_screen pulls in
+        # several modules that don't need to load if the user never opens
+        # the test screen).
+        from meeting_notes.audio_test_screen import AudioTestScreen
+
+        try:
+            transient = AppConfig.from_dict(self.config)
+        except Exception as e:
+            self.app.notify(f"Could not build test config: {e}", severity="error")
+            return
+        self.app.push_screen(AudioTestScreen(transient))
     
     def handle_install_model(self, model_name: Optional[str]) -> None:
         """Handle model installation."""

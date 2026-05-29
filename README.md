@@ -177,6 +177,7 @@ python run.py --dev
 - `p` - Copy path
 - `f` - Show in file manager
 - `,` - Settings
+- `A` - Audio Test (verify mic + system audio are working)
 - `q` - Quit
 - `↑↓` or `j/k` - Navigate list
 
@@ -328,16 +329,105 @@ bind = SUPER, M, exec, $HOME/.local/bin/meeting-notes
 
 ## Audio Configuration
 
-**Recording modes** (change in settings):
+Press `,` → **Audio** to configure all of this from the TUI.
+
+**Recording modes:**
 - `combined` - Mic + System (default, best for meetings)
 - `mic` - Microphone only
-- `system` - System audio only
+- `system` - System audio only (records the default sink's monitor)
+
+**Mic / System device pickers:**
+The Audio settings page lists every PipeWire/PulseAudio source and sink
+detected via `pactl`. Pick a specific one (e.g. *Scarlett Solo*) or leave
+both on **System default** to follow whatever your OS is currently using.
+Devices are stored by name (not numeric index), so they survive reboots.
+
+**Whisper compute device:**
+- `cpu` (default) — safe everywhere; matches the privacy-first claim above.
+- `cuda` — uses your GPU; requires a working `torch` + CUDA install. If
+  loading fails (e.g. *"no kernel image is available for execution on the
+  device"*), the app automatically falls back to CPU and logs a warning.
+- `auto` — let `torch` pick.
+
+**Live mic level meter:**
+While recording, the recording view shows a real-time peak meter for the
+mic so you can confirm audio is actually arriving (green → yellow → red).
+This runs as a separate `parec`/`pw-record` reader and doesn't interfere
+with the main capture.
+
+**Audio Test mode** (press `A` from the main view, or **Run Audio Test**
+from settings → Audio):
+
+- Shows live peak meters for both the mic and the system sink monitor
+  simultaneously, so you can verify each side is wired up correctly.
+- Records a 5-second clip with your *current* device choices (including
+  unsaved changes in the settings screen) and then issues a verdict:
+  - **PASS** — clip is the right length, levels are healthy, not clipping.
+  - **WARN** — captured audio but it's too quiet, clipping, or mostly silent.
+  - **FAIL** — file is missing/empty/silent; pipeline is broken.
+- Lets you play the clip back through `pw-play`/`paplay`/`aplay`/`ffplay`
+  so you can listen to what Whisper would actually see.
+- Cleans up after itself: test recordings live in `/tmp` and are deleted
+  when you close the screen.
+
+### Does this work for Google Meet, Zoom, Teams, etc?
+
+Yes. The system-audio capture path is app-agnostic — it records whatever's
+playing through the configured sink. As long as your meeting app (browser
+Meet, native Zoom, Teams, Slack huddle, Discord, etc.) plays through the
+same sink the recorder is pointed at, the other participants' voices end
+up in the transcript.
+
+Three traps to watch for:
+
+1. **Native apps remember per-app sinks.** Zoom, Teams etc. often
+   remember the last "Speaker" you picked in their own settings. If you
+   ever picked something other than "Same as System" / "System Default",
+   Zoom may play out of laptop speakers while the recorder captures the
+   Scarlett (or whatever).
+2. **PipeWire `stream-restore` remembers per-app sinks.** Even browser
+   tabs can stick to a sink they used last week.
+3. **Echo-cancel virtual sources.** Some setups create an
+   `echo-cancel-source` device. This only affects what your meeting
+   partners hear from your mic; it doesn't affect what we capture for
+   the transcript.
+
+The Audio Test screen (press `A` from the main view) now actively
+diagnoses all three. When a meeting app is running, it shows:
+
+- `✓ Zoom is routed to the captured sink — its audio will be in your notes.`
+- `⚠ Zoom is playing on 'alsa_output.builtin', but we'll capture 'alsa_output.scarlett'. Other participants' audio will be MISSING from your meeting notes.`
+
+And during a real recording, if a meeting app opens a new stream on a
+sink we're not capturing, you'll get a toast notification immediately.
+
+### Why does the recorder use different tools for mic vs system audio?
+
+`pw-record` (the PipeWire-native capture tool) handles microphone sources
+correctly, but on at least one common setup — Focusrite Scarlett Solo
+under PipeWire 1.6.4 — it captures sink monitors at roughly **40 dB lower
+amplitude** than expected. `parec` (the PulseAudio compatibility tool)
+reads the same monitor source at full level on the same hardware in the
+same instant.
+
+So the recorder uses:
+
+- `parec` for any target ending in `.monitor` (system audio capture)
+- `pw-record` for microphone sources
+
+Both fall back to the other if the preferred tool is missing. This split
+keeps mic capture on the simpler PipeWire-native path while routing
+monitor capture through the compatibility shim that gets the volume
+right.
+
+If you discover your setup is the opposite (parec is quiet on monitors,
+pw-record is loud), please open an issue with output from
+`pactl list sinks | grep -A2 -E 'Name|Volume'` so we can revisit.
 
 ## Roadmap
 
 ### Planned Features
 
-- Real-time audio level meters during recording
 - Advanced filtering UI (by date, tags, keywords)
 - Export to PDF/DOCX formats
 - Google Calendar integration (OAuth, auto-fetch meetings)
