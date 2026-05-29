@@ -30,7 +30,7 @@ docs/
 .ruff_cache/
 
 # OpenCode
-.opencode/plans/
+.opencode/
 
 # IDEs
 .vscode/
