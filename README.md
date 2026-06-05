@@ -48,6 +48,15 @@ sudo pacman -S python python-pip ffmpeg portaudio
 # Ubuntu / Debian
 sudo apt install python3 python3-pip python3-venv ffmpeg portaudio19-dev pulseaudio-utils
 
+# Fedora / RHEL
+# install rpm fusion
+sudo dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+
+# install ffmpeg
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing
+
+sudo dnf install python3 python3-pip python3-virtualenv pulseaudio-utils portaudio
+
 # Your system should already have PipeWire/PulseAudio
 ```
 
@@ -87,6 +96,7 @@ ollama pull llama3.2:3b
 ```
 
 **Option C: No AI (transcription only)**
+
 - Set `ai_provider: none` in settings
 - You'll get transcripts without AI summaries
 
@@ -221,9 +231,9 @@ Need to follow up with Sarah about budget
 
 ## AI Summary
 
-The meeting discussed the updates and changes to be made on the content 
-side of a website, focusing on layout, design, and functionality. The 
-conversation centered around visualizing the proposed changes and finalizing 
+The meeting discussed the updates and changes to be made on the content
+side of a website, focusing on layout, design, and functionality. The
+conversation centered around visualizing the proposed changes and finalizing
 the details for implementation. Key stakeholders were engaged in the discussion.
 
 ### Key Points
@@ -250,10 +260,10 @@ Charlie, [other participants]
 
 ## Full Transcript
 
-**[00:00]** but the actual changes or the full updates are on the 
+**[00:00]** but the actual changes or the full updates are on the
 content side of things.
 
-**[00:06]** If I actually share with you just to help you kind of 
+**[00:06]** If I actually share with you just to help you kind of
 visualize that...
 
 **[00:12]** with what we look like, I'll share my screen right now...
@@ -273,7 +283,7 @@ Shows recording status in your Waybar (idle/recording/processing).
     "custom/meeting-notes",
     // ... your other modules
   ],
-  
+
   "custom/meeting-notes": {
     "exec": "/path/to/meeting-notes/hyprland/waybar-module.sh",
     "return-type": "json",
@@ -314,6 +324,7 @@ killall waybar && waybar &
 ```
 
 The module shows:
+
 - 󰗠 (gray) - App not running
 - 󰗠 (green) - Ready
 - 󰦕 05:42 (red) - Recording with timer
