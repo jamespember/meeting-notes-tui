@@ -92,6 +92,7 @@ echo "Updating config..."
 
 # Update config file
 CONFIG_FILE="$HOME/.config/meeting-notes/config.yaml"
+mkdir -p "$(dirname "$CONFIG_FILE")"
 
 # Check if config already exists and warn user
 if [ -f "$CONFIG_FILE" ]; then
