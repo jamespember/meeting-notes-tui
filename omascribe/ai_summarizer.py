@@ -223,15 +223,15 @@ class OpenAISummarizer(BaseSummarizer):
     
     MODELS = {
         "mini": {
-            "id": "gpt-4o-mini",
-            "name": "GPT-4o Mini",
-            "cost_per_1k_input": 0.00015,
-            "cost_per_1k_output": 0.0006,
+            "id": "gpt-5-mini",
+            "name": "GPT-5 mini",
+            "cost_per_1k_input": 0.00025,
+            "cost_per_1k_output": 0.002,
         },
         "standard": {
-            "id": "gpt-4o",
-            "name": "GPT-4o",
-            "cost_per_1k_input": 0.0025,
+            "id": "gpt-5",
+            "name": "GPT-5",
+            "cost_per_1k_input": 0.00125,
             "cost_per_1k_output": 0.01,
         }
     }
@@ -302,14 +302,14 @@ class AnthropicSummarizer(BaseSummarizer):
     
     MODELS = {
         "haiku": {
-            "id": "claude-3-5-haiku-20241022",
-            "name": "Claude 3.5 Haiku",
-            "cost_per_1k_input": 0.0008,
-            "cost_per_1k_output": 0.004,
+            "id": "claude-haiku-4-5-20251001",
+            "name": "Claude Haiku 4.5",
+            "cost_per_1k_input": 0.0011,
+            "cost_per_1k_output": 0.0055,
         },
         "sonnet": {
-            "id": "claude-3-5-sonnet-20241022",
-            "name": "Claude 3.5 Sonnet",
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
             "cost_per_1k_input": 0.003,
             "cost_per_1k_output": 0.015,
         }
@@ -382,18 +382,18 @@ class OpenRouterSummarizer(BaseSummarizer):
     
     MODELS = {
         "cheap": {
-            "id": "google/gemini-flash-1.5",
-            "name": "Gemini 1.5 Flash",
-            "cost_per_1k_tokens": 0.000075,
+            "id": "google/gemini-3.6-flash",
+            "name": "Gemini 3.6 Flash",
+            "cost_per_1k_tokens": 0.00075,
         },
         "balanced": {
-            "id": "anthropic/claude-3-5-haiku",
-            "name": "Claude 3.5 Haiku",
-            "cost_per_1k_tokens": 0.00025,
+            "id": "anthropic/claude-haiku-4.5",
+            "name": "Claude Haiku 4.5",
+            "cost_per_1k_tokens": 0.0011,
         },
         "premium": {
-            "id": "anthropic/claude-3.5-sonnet",
-            "name": "Claude 3.5 Sonnet",
+            "id": "anthropic/claude-sonnet-4.6",
+            "name": "Claude Sonnet 4.6",
             "cost_per_1k_tokens": 0.003,
         }
     }
