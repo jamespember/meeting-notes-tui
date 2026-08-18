@@ -15,8 +15,8 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 install -Dm644 \
-    "$ROOT_DIR/integrations/omarchy/meeting-notes.desktop" \
-    "$HOME/.local/share/applications/meeting-notes.desktop"
+    "$ROOT_DIR/integrations/omarchy/omascribe.desktop" \
+    "$HOME/.local/share/applications/omascribe.desktop"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$HOME/.local/share/applications"
@@ -25,13 +25,13 @@ fi
 bindings="$HOME/.config/hypr/bindings.lua"
 mkdir -p "$(dirname "$bindings")"
 touch "$bindings"
-if ! grep -Fq -- '-- meeting-notes:begin' "$bindings"; then
+if ! grep -Fq -- '-- omascribe:begin' "$bindings"; then
     cp "$bindings" "$bindings.bak.$(date +%s)"
     cat >> "$bindings" <<'EOF'
 
--- meeting-notes:begin
-o.bind("SUPER + M", "Meeting Notes", { tui = "meeting-notes", focus = true })
--- meeting-notes:end
+-- omascribe:begin
+o.bind("SUPER + M", "Omascribe", { tui = "omascribe", focus = true })
+-- omascribe:end
 EOF
 fi
 
@@ -51,14 +51,14 @@ jq '
   | .bar.layout = (.bar.layout // {})
   | .bar.layout.right = (.bar.layout.right // [])
   | .bar.layout.right = (
-      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "meeting-notes")]
+      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "omascribe")]
       + [{
-          "id": "meeting-notes",
+          "id": "omascribe",
           "type": "command",
-          "exec": "meeting-notes-status",
+          "exec": "omascribe-status",
           "interval": 1,
-          "tooltip": "Meeting Notes",
-          "onClick": "omarchy-launch-or-focus-tui meeting-notes"
+          "tooltip": "Omascribe",
+          "onClick": "omarchy-launch-or-focus-tui omascribe"
         }]
     )
 ' "$source_config" > "$tmp"

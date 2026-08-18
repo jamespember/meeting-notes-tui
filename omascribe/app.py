@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Meeting Notes - Lazygit-inspired TUI redesign."""
+"""Omascribe - Lazygit-inspired TUI redesign."""
 
 import sys
 import time
@@ -18,16 +18,16 @@ from textual.reactive import reactive
 from textual.screen import Screen, ModalScreen
 from textual import work
 
-from meeting_notes.recorder import AudioRecorder, list_active_sink_inputs
-from meeting_notes.transcriber import WhisperTranscriber
-from meeting_notes.note_maker import NoteMaker
-from meeting_notes.config import load_config, save_config, AppConfig, validate_config
-from meeting_notes.settings import SettingsScreen
-from meeting_notes.logger import setup_logging, get_logger
-from meeting_notes.level_meter import MicLevelMeter
-from meeting_notes.audio_test_screen import AudioTestScreen
-from meeting_notes.desktop import clear_status, notify_desktop, write_status
-from meeting_notes.theme import omarchy_theme
+from omascribe.recorder import AudioRecorder, list_active_sink_inputs
+from omascribe.transcriber import WhisperTranscriber
+from omascribe.note_maker import NoteMaker
+from omascribe.config import load_config, save_config, AppConfig, validate_config
+from omascribe.settings import SettingsScreen
+from omascribe.logger import setup_logging, get_logger
+from omascribe.level_meter import MicLevelMeter
+from omascribe.audio_test_screen import AudioTestScreen
+from omascribe.desktop import clear_status, notify_desktop, write_status
+from omascribe.theme import omarchy_theme
 
 # Initialize logging
 setup_logging(debug=False)
@@ -607,7 +607,7 @@ class ConfirmDiscardScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
-class MeetingNotesApp(App):
+class OmascribeApp(App):
     """Main application with Lazygit-inspired layout."""
     
     CSS = """
@@ -906,7 +906,7 @@ class MeetingNotesApp(App):
 
     def compose(self) -> ComposeResult:
         """Build the UI."""
-        yield Static("󰗠  MEETING NOTES", id="app-header")
+        yield Static("󰗠  OMASCRIBE", id="app-header")
         yield Static("", id="processing-banner")
         # Main content area
         with Container(id="main-panels"):
@@ -924,11 +924,11 @@ class MeetingNotesApp(App):
     
     def on_mount(self) -> None:
         """Initialize app on mount."""
-        logger.info("Initializing Meeting Notes app")
+        logger.info("Initializing Omascribe app")
         logger.info(f"Config: {self.config.to_safe_dict()}")
         logger.debug(f"Dev mode: {self.dev_mode}")
         
-        self.title = "Meeting Notes"
+        self.title = "Omascribe"
         self.sub_title = "Keyboard-driven meeting recorder"
 
         # Set pane titles with keyboard hints
@@ -1154,7 +1154,7 @@ class MeetingNotesApp(App):
             elsewhere = []
             # active sink-inputs reference sinks by numeric index;
             # we need to map to names to compare against the target.
-            from meeting_notes.recorder import _sink_index_to_name
+            from omascribe.recorder import _sink_index_to_name
 
             idx_to_name = _sink_index_to_name()
             for si in active:
@@ -1687,7 +1687,7 @@ class MeetingNotesApp(App):
             if ai_error:
                 logger.warning(f"Note created but AI summarization failed: {ai_error}")
                 self.call_from_thread(self.notify, f"⚠ Note created but {ai_error}", severity="warning")
-                self.call_from_thread(self.notify, f"Check ~/.config/meeting-notes/errors.log for details", severity="warning")
+                self.call_from_thread(self.notify, f"Check ~/.config/omascribe/errors.log for details", severity="warning")
                 notify_desktop("Note saved, but AI summarization failed. Click to inspect it.", urgency="critical")
             else:
                 logger.info(f"Note created successfully: {note_path}")
@@ -2302,5 +2302,5 @@ def run(dev_mode: bool = False):
     except Exception:
         pass  # Non-critical, best effort
 
-    app = MeetingNotesApp(dev_mode=dev_mode)
+    app = OmascribeApp(dev_mode=dev_mode)
     app.run()

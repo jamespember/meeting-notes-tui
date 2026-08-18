@@ -14,8 +14,8 @@ import wave
 
 import pytest
 
-from meeting_notes import recorder as rec_module
-from meeting_notes.recorder import AudioRecorder, resolve_monitor_source
+from omascribe import recorder as rec_module
+from omascribe.recorder import AudioRecorder, resolve_monitor_source
 
 
 class _FakeProc:

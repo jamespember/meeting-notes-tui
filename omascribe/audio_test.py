@@ -233,7 +233,7 @@ def diagnose(
             summary="No file was produced.",
             findings=["The recorder didn't write any output. "
                       "Most likely the capture command failed to spawn — "
-                      "check ~/.config/meeting-notes/errors.log."],
+                      "check ~/.config/omascribe/errors.log."],
             stats=stats,
         )
 

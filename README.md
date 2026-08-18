@@ -1,4 +1,4 @@
-# Meeting Notes AI
+# Omascribe
 
 A local, privacy-focused AI meeting notetaker for Linux with a keyboard-driven TUI. Record meetings, transcribe with Whisper, and generate summaries with your choice of local or cloud LLM.
 
@@ -24,8 +24,8 @@ The easiest way to get started:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jamespember/meeting-notes.git
-cd meeting-notes
+git clone https://github.com/jamespember/omascribe.git
+cd omascribe
 
 # Run the setup script
 ./setup.sh
@@ -34,14 +34,14 @@ cd meeting-notes
 The setup script will:
 1. Check system dependencies (PipeWire, Pulse compatibility, ffmpeg)
 2. Create a Python virtual environment
-3. Install the `meeting-notes` and `meeting-notes-status` commands
+3. Install the `omascribe` and `omascribe-status` commands
 4. Configure Omarchy Quattro automatically when detected
 5. Let you choose between Cloud AI, Local AI (Ollama), or no AI
 
 On Omarchy Quattro, setup adds:
 
-- `SUPER + M` to launch or focus Meeting Notes
-- Meeting Notes to the native Apps menu
+- `SUPER + M` to launch or focus Omascribe
+- Omascribe to the native Apps menu
 - A clickable recording/processing indicator in the Quickshell bar
 - Clickable desktop notifications for important recording events
 
@@ -91,7 +91,7 @@ Run the cloud setup script:
 Or configure manually:
 - Press `,` in the app → configure API key
 - Supports OpenAI, Anthropic, OpenRouter
-- Keys stored in `~/.config/meeting-notes/config.yaml`
+- Keys stored in `~/.config/omascribe/config.yaml`
 
 **Option B: Local AI (Free, private, but slower)**
 
@@ -109,7 +109,7 @@ ollama pull llama3.2:3b
 
 ```bash
 # Installed by setup.sh (works immediately even before your next login)
-~/.local/bin/meeting-notes
+~/.local/bin/omascribe
 
 # Or with development mode (preserves temp audio files):
 python run.py --dev
@@ -121,7 +121,7 @@ python run.py --dev
 
 ```
 ┌─────────────────────────┐ ┌──────────────────────────────────┐
-│ Meeting Notes           │ │ Note Preview                     │
+│ Omascribe           │ │ Note Preview                     │
 │                         │ │                                  │
 │ 2026-01-15 14:04        │ │ # Website Redesign Discussion    │
 │ Website Redesign...     │ │                                  │
@@ -300,16 +300,16 @@ The bar shows:
 
 Status is atomic JSON stored privately under `$XDG_RUNTIME_DIR`; it is not
 kept in the repository and is never evaluated as shell code. Click the bar
-indicator or a Meeting Notes notification to launch or focus the TUI.
+indicator or a Omascribe notification to launch or focus the TUI.
 
-To remove the bar entry, delete the object with `"id": "meeting-notes"` from
+To remove the bar entry, delete the object with `"id": "omascribe"` from
 `~/.config/omarchy/shell.json`, then run:
 
 ```bash
 omarchy restart shell
 ```
 
-For non-Omarchy Hyprland installations, launch `meeting-notes` from your
+For non-Omarchy Hyprland installations, launch `omascribe` from your
 preferred terminal and define compositor bindings using that installation's
 current configuration format.
 
@@ -447,7 +447,7 @@ This is a personal project but suggestions and contributions are welcome!
 pip install pytest pytest-asyncio ruff textual openai anthropic openrouter pyyaml
 pytest tests/test_config.py tests/test_paths_and_fallbacks.py \
        tests/test_summarizers.py tests/test_textual_smoke.py
-ruff check meeting_notes/ tests/
+ruff check omascribe/ tests/
 
 # Full suite (also runs Textual headless smoke tests; needs the full env)
 pip install -e ".[all,dev]"

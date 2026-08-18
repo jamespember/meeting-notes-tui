@@ -1,4 +1,4 @@
-"""Settings UI screens for Meeting Notes."""
+"""Settings UI screens for Omascribe."""
 
 from pathlib import Path
 from typing import Optional
@@ -10,14 +10,14 @@ from textual.screen import Screen, ModalScreen
 from textual.reactive import reactive
 from textual import work
 
-from meeting_notes.config import AppConfig, save_config, validate_config, get_config_path
-from meeting_notes.ollama_utils import (
+from omascribe.config import AppConfig, save_config, validate_config, get_config_path
+from omascribe.ollama_utils import (
     get_installed_models,
     get_recommended_models,
     install_model,
     check_ollama_installed
 )
-from meeting_notes.recorder import list_input_devices, list_output_devices
+from omascribe.recorder import list_input_devices, list_output_devices
 
 
 class InstallingModelScreen(ModalScreen):
@@ -929,7 +929,7 @@ class SettingsScreen(Screen):
         # Lazy import to avoid a circular import (audio_test_screen pulls in
         # several modules that don't need to load if the user never opens
         # the test screen).
-        from meeting_notes.audio_test_screen import AudioTestScreen
+        from omascribe.audio_test_screen import AudioTestScreen
 
         try:
             transient = AppConfig.from_dict(self.config)

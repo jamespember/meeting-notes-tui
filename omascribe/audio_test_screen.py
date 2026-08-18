@@ -34,7 +34,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
-from meeting_notes.audio_test import (
+from omascribe.audio_test import (
     AudioTestReport,
     analyse_wav,
     diagnose,
@@ -42,10 +42,10 @@ from meeting_notes.audio_test import (
     generate_test_tone,
     play_wav,
 )
-from meeting_notes.config import AppConfig
-from meeting_notes.level_meter import MicLevelMeter
-from meeting_notes.logger import get_logger
-from meeting_notes.recorder import (
+from omascribe.config import AppConfig
+from omascribe.level_meter import MicLevelMeter
+from omascribe.logger import get_logger
+from omascribe.recorder import (
     AudioRecorder,
     assess_setup_health,
     diagnose_meeting_routing,
@@ -295,7 +295,7 @@ class AudioTestScreen(ModalScreen):
             chosen = busy
             chosen_reason = "auto-picked (busiest)"
         else:
-            from meeting_notes.recorder import _get_default
+            from omascribe.recorder import _get_default
 
             chosen = _get_default("sink") or ""
             chosen_reason = "system default (no apps playing yet)"
@@ -512,7 +512,7 @@ class AudioTestScreen(ModalScreen):
             f"mode={self.config.recording_mode}"
         )
         try:
-            tmpdir = Path(tempfile.mkdtemp(prefix="meeting-notes-test-"))
+            tmpdir = Path(tempfile.mkdtemp(prefix="omascribe-test-"))
             if self._closed:
                 shutil.rmtree(tmpdir, ignore_errors=True)
                 return
@@ -797,7 +797,7 @@ class AudioTestScreen(ModalScreen):
 
         def _go():
             try:
-                tmpdir = Path(tempfile.mkdtemp(prefix="meeting-notes-tone-"))
+                tmpdir = Path(tempfile.mkdtemp(prefix="omascribe-tone-"))
                 tone_path = tmpdir / "tone.wav"
                 generate_test_tone(tone_path, seconds=1.5, freq=440.0, amp=0.4)
                 try:

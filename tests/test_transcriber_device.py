@@ -49,9 +49,9 @@ def fake_whisper(monkeypatch):
 
 
 def _fresh_transcriber_module(monkeypatch):
-    """Reload meeting_notes.transcriber so it picks up the fake whisper."""
+    """Reload omascribe.transcriber so it picks up the fake whisper."""
     # We can just import; transcriber imports whisper lazily inside load_model.
-    from meeting_notes import transcriber  # noqa: WPS433
+    from omascribe import transcriber  # noqa: WPS433
     return transcriber
 
 

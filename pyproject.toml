@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "meeting-notes"
+name = "omascribe"
 version = "0.2.0"
 description = "A local, privacy-focused AI meeting notetaker for Linux with a keyboard-driven TUI"
 readme = "README.md"
@@ -65,7 +65,7 @@ extend-exclude = ["venv", "notes", "transcripts", "recordings"]
 
 [tool.ruff.lint]
 # Conservative ruleset: real bugs and unused code, no style nitpicks.
-# `meeting_notes/` is not new code, so we don't want to fight existing style.
+# `omascribe/` is not new code, so we don't want to fight existing style.
 select = ["E9", "F", "B"]
 ignore = [
     "F401",  # imported but unused — Textual modules import widgets defensively
@@ -78,9 +78,9 @@ ignore = [
 ]
 
 [project.scripts]
-meeting-notes = "meeting_notes.app:run"
-meeting-notes-status = "meeting_notes.desktop:bar_status"
+omascribe = "omascribe.app:run"
+omascribe-status = "omascribe.desktop:bar_status"
 
 [project.urls]
-Homepage = "https://github.com/jamespember/meeting-notes"
-Repository = "https://github.com/jamespember/meeting-notes"
+Homepage = "https://github.com/jamespember/omascribe"
+Repository = "https://github.com/jamespember/omascribe"

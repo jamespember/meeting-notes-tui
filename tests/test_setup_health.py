@@ -8,7 +8,7 @@ the user toward a better setup before a real meeting.
 
 from __future__ import annotations
 
-from meeting_notes.recorder import assess_setup_health
+from omascribe.recorder import assess_setup_health
 
 
 def test_webcam_mic_is_flagged():

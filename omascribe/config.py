@@ -1,4 +1,4 @@
-"""Configuration management for Meeting Notes."""
+"""Configuration management for Omascribe."""
 
 import os
 import tempfile
@@ -81,9 +81,9 @@ def get_config_path() -> Path:
     # Use XDG_CONFIG_HOME if set, otherwise ~/.config
     config_home = os.environ.get('XDG_CONFIG_HOME')
     if config_home:
-        config_dir = Path(config_home) / "meeting-notes"
+        config_dir = Path(config_home) / "omascribe"
     else:
-        config_dir = Path.home() / ".config" / "meeting-notes"
+        config_dir = Path.home() / ".config" / "omascribe"
     
     config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(config_dir, 0o700)

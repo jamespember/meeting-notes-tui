@@ -1,5 +1,5 @@
 """Tests for AppConfig: defaults, serialisation, validation."""
-from meeting_notes.config import AppConfig, validate_config
+from omascribe.config import AppConfig, validate_config
 
 
 def test_default_recording_retention_days():

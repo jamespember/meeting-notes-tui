@@ -47,7 +47,7 @@ jobs:
             ruff
 
       - name: Lint (ruff)
-        run: ruff check meeting_notes/ tests/
+        run: ruff check omascribe/ tests/
 
       - name: Test (pytest, fast tests only)
         # Explicitly listing the test files keeps CI green even if someone

@@ -40,7 +40,7 @@ MEETING_NOTES_API_KEY="$api_key" \
 "$PYTHON" <<'PY'
 import os
 
-from meeting_notes.config import load_config, save_config
+from omascribe.config import load_config, save_config
 
 provider = os.environ["MEETING_NOTES_PROVIDER"]
 config = load_config()
@@ -51,5 +51,5 @@ save_config(config)
 PY
 
 unset api_key
-echo "$provider_name configured. The key is stored only in the private Meeting Notes config."
-echo "Run: meeting-notes"
+echo "$provider_name configured. The key is stored only in the private Omascribe config."
+echo "Run: omascribe"

@@ -1,4 +1,4 @@
-"""Centralized logging configuration for Meeting Notes application."""
+"""Centralized logging configuration for Omascribe application."""
 
 import logging
 import os
@@ -20,9 +20,9 @@ def get_log_dir() -> Path:
     """Get the directory for log files."""
     config_home = os.environ.get('XDG_CONFIG_HOME')
     if config_home:
-        log_dir = Path(config_home) / "meeting-notes"
+        log_dir = Path(config_home) / "omascribe"
     else:
-        log_dir = Path.home() / ".config" / "meeting-notes"
+        log_dir = Path.home() / ".config" / "omascribe"
     
     log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(log_dir, 0o700)
@@ -35,7 +35,7 @@ def setup_logging(debug: bool = False) -> None:
     
     Creates two log files:
     - errors.log: Only ERROR and CRITICAL messages (always enabled)
-    - meeting-notes.log: All messages including INFO and DEBUG (size-limited rotation)
+    - omascribe.log: All messages including INFO and DEBUG (size-limited rotation)
     
     Args:
         debug: If True, set console output to DEBUG level
@@ -70,7 +70,7 @@ def setup_logging(debug: bool = False) -> None:
     root_logger.addHandler(error_handler)
     
     # 3. Full application log - All messages
-    app_log = log_dir / "meeting-notes.log"
+    app_log = log_dir / "omascribe.log"
     app_handler = PrivateRotatingFileHandler(app_log, maxBytes=5_000_000, backupCount=2)
     app_handler.setLevel(logging.DEBUG)
     app_formatter = logging.Formatter(
@@ -81,7 +81,7 @@ def setup_logging(debug: bool = False) -> None:
     
     # Log startup
     logging.info("="*80)
-    logging.info(f"Meeting Notes application started at {datetime.now()}")
+    logging.info(f"Omascribe application started at {datetime.now()}")
     logging.info(f"Log directory: {log_dir}")
     logging.info(f"Debug mode: {debug}")
     logging.info("="*80)

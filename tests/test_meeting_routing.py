@@ -8,8 +8,8 @@ the high-stakes case where ignoring the warning means recording a
 
 from __future__ import annotations
 
-from meeting_notes import recorder as rec_module
-from meeting_notes.recorder import (
+from omascribe import recorder as rec_module
+from omascribe.recorder import (
     SinkInput,
     diagnose_meeting_routing,
     is_meeting_app,

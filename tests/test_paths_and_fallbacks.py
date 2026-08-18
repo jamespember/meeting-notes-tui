@@ -5,8 +5,8 @@ parents=True, and eduspano's empty-ollama-model fallback.
 """
 from pathlib import Path
 
-from meeting_notes.note_maker import NoteMaker
-from meeting_notes.recorder import AudioRecorder
+from omascribe.note_maker import NoteMaker
+from omascribe.recorder import AudioRecorder
 
 
 def test_note_maker_expands_user(tmp_path, monkeypatch):

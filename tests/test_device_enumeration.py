@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from meeting_notes import recorder as rec_module
+from omascribe import recorder as rec_module
 
 
 SAMPLE_PACTL_SOURCES = """

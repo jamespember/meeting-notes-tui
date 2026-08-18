@@ -3,7 +3,7 @@
 import json
 import os
 
-from meeting_notes import desktop
+from omascribe import desktop
 
 
 def test_status_is_private_and_atomic(tmp_path, monkeypatch):
@@ -89,6 +89,6 @@ def test_omarchy_notification_is_clickable(monkeypatch):
 
     command, kwargs = calls[0]
     assert "--exec" in command
-    assert "omarchy-launch-or-focus-tui meeting-notes" in command
+    assert "omarchy-launch-or-focus-tui omascribe" in command
     assert command[-1] == "Safe status"
     assert kwargs["start_new_session"] is True

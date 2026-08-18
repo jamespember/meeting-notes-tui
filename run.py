@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Entry point for Meeting Notes application."""
+"""Entry point for Omascribe application."""
 
 import sys
-from meeting_notes.app import run
+from omascribe.app import run
 
 if __name__ == "__main__":
     # Parse args for --dev flag

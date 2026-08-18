@@ -5,7 +5,7 @@ configured in MODELS dicts haven't drifted from what the providers actually
 accept. If a provider deprecates a model, you'd update both the constant
 here and the source.
 """
-from meeting_notes.ai_summarizer import (
+from omascribe.ai_summarizer import (
     AnthropicSummarizer,
     OpenAISummarizer,
     OpenRouterSummarizer,

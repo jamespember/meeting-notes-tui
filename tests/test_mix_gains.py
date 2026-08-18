@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from meeting_notes.recorder import AudioRecorder
+from omascribe.recorder import AudioRecorder
 
 
 def _write_wav(path: Path, samples: list[int], rate: int = 48000, channels: int = 1):

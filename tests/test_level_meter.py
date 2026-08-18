@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import struct
 
-from meeting_notes.level_meter import _peak_s16le
+from omascribe.level_meter import _peak_s16le
 
 
 def _pack(samples):

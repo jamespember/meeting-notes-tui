@@ -17,11 +17,11 @@ def status_path() -> Path:
     """Return the private runtime status path."""
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir:
-        return Path(runtime_dir) / "meeting-notes" / "status.json"
+        return Path(runtime_dir) / "omascribe" / "status.json"
 
     state_home = os.environ.get("XDG_STATE_HOME")
     state_dir = Path(state_home) if state_home else Path.home() / ".local" / "state"
-    return state_dir / "meeting-notes" / "status.json"
+    return state_dir / "omascribe" / "status.json"
 
 
 def _process_identity(pid: int) -> tuple[str, str]:
@@ -95,7 +95,7 @@ def bar_status() -> int:
     """Print Waybar-style JSON understood by Quattro command modules."""
     result = {
         "text": "󰗠",
-        "tooltip": "Meeting Notes is not running",
+        "tooltip": "Omascribe is not running",
         "class": "idle",
     }
 
@@ -121,7 +121,7 @@ def bar_status() -> int:
         elif state == "ready":
             result = {
                 "text": "󰗠",
-                "tooltip": "Meeting Notes is ready",
+                "tooltip": "Omascribe is ready",
                 "class": "ready",
             }
     except (FileNotFoundError, KeyError, TypeError, ValueError, OSError, ProcessLookupError):
@@ -146,21 +146,21 @@ def notify_desktop(
         command = [
             sender,
             "--app-name",
-            "meeting-notes",
+            "omascribe",
             "--urgency",
             urgency,
             "--glyph",
             glyph,
             "--exec",
-            "omarchy-launch-or-focus-tui meeting-notes",
-            "Meeting Notes",
+            "omarchy-launch-or-focus-tui omascribe",
+            "Omascribe",
             body,
         ]
     else:
         sender = shutil.which("notify-send")
         if not sender:
             return
-        command = [sender, "--app-name", "meeting-notes", "--urgency", urgency, "Meeting Notes", body]
+        command = [sender, "--app-name", "omascribe", "--urgency", urgency, "Omascribe", body]
 
     try:
         subprocess.Popen(

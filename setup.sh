@@ -1,5 +1,5 @@
 #!/bin/bash
-# Main setup script for Meeting Notes AI
+# Main setup script for Omascribe
 
 set -euo pipefail
 
@@ -7,12 +7,12 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$ROOT_DIR/venv"
 
 echo "======================================"
-echo "  Meeting Notes AI - Setup"
+echo "  Omascribe - Setup"
 echo "======================================"
 echo ""
 
 # Check if already configured
-CONFIG_FILE="$HOME/.config/meeting-notes/config.yaml"
+CONFIG_FILE="$HOME/.config/omascribe/config.yaml"
 if [ -f "$CONFIG_FILE" ]; then
     echo "ℹ️  Existing configuration detected at:"
     echo "   $CONFIG_FILE"
@@ -81,8 +81,8 @@ echo "Installing Python dependencies..."
 "$PYTHON" -m pip install -e "$ROOT_DIR[all]"
 
 mkdir -p "$HOME/.local/bin"
-ln -sfn "$VENV_DIR/bin/meeting-notes" "$HOME/.local/bin/meeting-notes"
-ln -sfn "$VENV_DIR/bin/meeting-notes-status" "$HOME/.local/bin/meeting-notes-status"
+ln -sfn "$VENV_DIR/bin/omascribe" "$HOME/.local/bin/omascribe"
+ln -sfn "$VENV_DIR/bin/omascribe-status" "$HOME/.local/bin/omascribe-status"
 
 if command -v omarchy >/dev/null 2>&1 && [[ $(omarchy version) == 4.* ]]; then
     "$ROOT_DIR/integrations/omarchy/install.sh"
@@ -92,7 +92,7 @@ configure_ai_provider() {
     "$PYTHON" - "$1" <<'PY'
 import sys
 
-from meeting_notes.config import load_config, save_config
+from omascribe.config import load_config, save_config
 
 provider = sys.argv[1]
 config = load_config()
@@ -186,7 +186,7 @@ echo "  Setup Complete!"
 echo "======================================"
 echo ""
 echo "To run the application:"
-echo "   $HOME/.local/bin/meeting-notes"
+echo "   $HOME/.local/bin/omascribe"
 echo ""
 echo "Keyboard shortcuts:"
 echo "   r - Start recording"

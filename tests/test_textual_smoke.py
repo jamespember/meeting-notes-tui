@@ -18,8 +18,8 @@ import pytest
 # Skip cleanly for contributors who only installed non-UI test dependencies.
 pytest.importorskip("textual", reason="run `pip install -e .[all,dev]` to enable Textual smoke tests")
 
-from meeting_notes.app import MeetingNotesApp, NoteViewer, RecordingView  # noqa: E402  (deliberate import-after-skip)
-from meeting_notes.settings import SettingsScreen  # noqa: E402
+from omascribe.app import OmascribeApp, NoteViewer, RecordingView  # noqa: E402  (deliberate import-after-skip)
+from omascribe.settings import SettingsScreen  # noqa: E402
 from textual.widgets import Input, ListView  # noqa: E402
 
 
@@ -30,7 +30,7 @@ async def test_app_starts_and_exits_cleanly(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
-    app = MeetingNotesApp()
+    app = OmascribeApp()
     async with app.run_test() as pilot:
         # Just let the app stabilise. If anything raises during mount,
         # we'd see it here.
@@ -46,7 +46,7 @@ async def test_settings_screen_opens(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
-    app = MeetingNotesApp()
+    app = OmascribeApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press(",")
@@ -69,7 +69,7 @@ async def test_switching_providers_does_not_duplicate_widget_ids(tmp_path, monke
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
-    app = MeetingNotesApp()
+    app = OmascribeApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press(",")  # open settings
@@ -101,7 +101,7 @@ async def test_compact_layout_and_settings_draft_survive_navigation(tmp_path, mo
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
-    app = MeetingNotesApp()
+    app = OmascribeApp()
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         assert app.has_class("compact")
@@ -152,7 +152,7 @@ async def test_stop_failure_restores_library_view(tmp_path, monkeypatch):
         def stop_recording(self):
             raise RuntimeError("mix failed")
 
-    app = MeetingNotesApp()
+    app = OmascribeApp()
     async with app.run_test() as pilot:
         await pilot.pause()
         app.recorder = FailingRecorder()

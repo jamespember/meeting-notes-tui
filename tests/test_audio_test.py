@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from meeting_notes.audio_test import (
+from omascribe.audio_test import (
     analyse_wav,
     diagnose,
 )

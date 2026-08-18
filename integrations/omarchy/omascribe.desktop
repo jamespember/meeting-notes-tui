@@ -1,9 +1,9 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Meeting Notes
+Name=Omascribe
 Comment=Record, transcribe, and summarize meetings
-Exec=omarchy-launch-or-focus-tui meeting-notes
+Exec=omarchy-launch-or-focus-tui omascribe
 Terminal=false
 Icon=audio-input-microphone-symbolic
 Categories=Office;
