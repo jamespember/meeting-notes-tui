@@ -64,7 +64,7 @@ jq '
   | .bar.layout = (.bar.layout // {})
   | .bar.layout.right = (.bar.layout.right // [])
   | .bar.layout.right = (
-      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "omascribe.control")]
+      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "omascribe" and (if type == "object" then (.id // "") else . end) != "omascribe.control")]
       + [{
           "id": "omascribe.control",
           "refreshIntervalSec": 1,

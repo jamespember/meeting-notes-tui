@@ -27,8 +27,29 @@ On Omarchy Quattro this adds:
 
 - `SUPER + M` — launch or focus
 - Apps menu entry
-- Quickshell bar module (recording/processing indicator)
+- **Omascribe control panel** — bar widget with live recording status, quick actions, and recent meetings
 - Desktop notifications for recording events
+
+## Omarchy control panel
+
+The bar plugin (in `integrations/omarchy/omascribe-control/`) drops a control
+panel from the bar: live recording status with a timer, quick actions
+(launch, open notes folder, settings), and the most recent meeting notes.
+
+It's installed by `./setup.sh`, which copies it into
+`~/.config/omarchy/plugins/omascribe.control/` and adds the bar entry to
+`~/.config/omarchy/shell.json`.
+
+To install manually (e.g. after resetting the shell config):
+
+```bash
+omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
+```
+
+Point that command at the git URL of a standalone Omarchy plugin repo. The
+Omascribe control panel ships inside this monorepo, so use `./setup.sh` — or
+copy the `omascribe-control/` folder into `~/.config/omarchy/plugins/` and run
+`omarchy-shell shell rescanPlugins` to pick it up.
 
 ## Usage
 
