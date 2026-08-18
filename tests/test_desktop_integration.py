@@ -46,6 +46,19 @@ def test_bar_status_ignores_stale_or_malformed_state(tmp_path, monkeypatch, caps
     assert json.loads(capsys.readouterr().out)["class"] == "idle"
 
 
+def test_bar_status_ignores_pid_identity_mismatch(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    desktop.write_status("recording", "09:00")
+    path = desktop.status_path()
+    payload = json.loads(path.read_text())
+    payload["start_time"] = "stale-process"
+    path.write_text(json.dumps(payload))
+
+    desktop.bar_status()
+
+    assert json.loads(capsys.readouterr().out)["class"] == "idle"
+
+
 def test_clear_status_only_removes_current_process(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     desktop.write_status("ready")

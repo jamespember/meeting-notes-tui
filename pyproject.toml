@@ -28,9 +28,10 @@ classifiers = [
     "Topic :: Office/Business",
 ]
 dependencies = [
-    "textual>=0.50.0",
+    "textual>=8.0,<9",
     "openai-whisper>=20231117",
     "pyyaml>=6.0",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

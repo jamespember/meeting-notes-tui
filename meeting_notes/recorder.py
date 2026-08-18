@@ -20,7 +20,9 @@ Design notes
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
+import wave
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -575,7 +577,7 @@ def _spawn_sink_keepawake(sink_name: str) -> Optional[subprocess.Popen]:
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
         time.sleep(0.2)
         if proc.poll() is not None:
@@ -798,13 +800,18 @@ class AudioRecorder:
         For combined mode, this also mixes the two temp WAVs with ffmpeg.
         """
         logger.info(f"Stopping audio recording (mode: {self.mode})")
-        if not self.is_recording():
+        if self.current_file is None:
             raise RuntimeError("Not currently recording")
 
-        if self.mode == "combined":
-            self._stop_combined()
-        else:
-            self._stop_single()
+        try:
+            if self.mode == "combined":
+                self._stop_combined()
+            else:
+                self._stop_single()
+                if not self._is_valid_wav(self.current_file):
+                    raise RuntimeError("Audio capture stopped without producing a valid WAV")
+        finally:
+            self._close_stderr_files()
 
         output_file = str(self.current_file) if self.current_file else ""
         self.current_file = None
@@ -832,12 +839,24 @@ class AudioRecorder:
 
         self.current_file = None
         self.temp_files = []
+        self._close_stderr_files()
 
     def is_recording(self) -> bool:
         if self.mode == "combined":
             return (
                 (self.mic_process is not None and self.mic_process.poll() is None)
                 or (self.system_process is not None and self.system_process.poll() is None)
+            )
+        return self.process is not None and self.process.poll() is None
+
+    def is_healthy(self) -> bool:
+        """Return whether every capture leg expected for this mode is alive."""
+        if self.mode == "combined":
+            return bool(
+                self.mic_process is not None
+                and self.mic_process.poll() is None
+                and self.system_process is not None
+                and self.system_process.poll() is None
             )
         return self.process is not None and self.process.poll() is None
 
@@ -946,11 +965,13 @@ class AudioRecorder:
     def _spawn(self, cmd: List[str], label: str) -> subprocess.Popen:
         """Spawn a capture process and verify it actually started."""
         logger.info(f"spawn[{label}]: {' '.join(cmd)}")
-        # Capture stderr to a pipe so we can read it if the process dies.
+        # A file cannot deadlock if a long-running recorder becomes chatty.
+        stderr_file = tempfile.TemporaryFile()
+        self._stderr_files.append(stderr_file)
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
+            stderr=stderr_file,
         )
         logger.debug(f"spawn[{label}]: pid={proc.pid}")
 
@@ -963,6 +984,14 @@ class AudioRecorder:
                     err = proc.stderr.read().decode("utf-8", errors="replace").strip()
                 except Exception:
                     pass
+            if not err:
+                try:
+                    stderr_file.seek(0)
+                    err = stderr_file.read().decode("utf-8", errors="replace").strip()
+                except Exception:
+                    pass
+            stderr_file.close()
+            self._stderr_files.remove(stderr_file)
             logger.error(
                 f"spawn[{label}]: pid={proc.pid} exited immediately "
                 f"rc={proc.returncode} stderr={err!r}"
@@ -1096,7 +1125,17 @@ class AudioRecorder:
             # Keep temps if dev_mode, OR if either leg looked silent (so the
             # user can recover the working leg with ffmpeg manually).
             preserve = self.dev_mode or self.last_mic_silent or self.last_system_silent
-            if mixed and not preserve:
+            if not mixed or not self._is_valid_wav(self.current_file):
+                self.last_temp_files = list(self.temp_files)
+                self.temp_files = []
+                try:
+                    self.current_file.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise RuntimeError(
+                    "Could not mix the recording. The separate mic and system files were preserved."
+                )
+            if not preserve:
                 for f in self.temp_files:
                     try:
                         f.unlink()
@@ -1113,10 +1152,31 @@ class AudioRecorder:
                     )
             self.temp_files = []
         else:
-            logger.warning(
+            self.last_temp_files = [f for f in self.temp_files if f.exists()]
+            self.temp_files = []
+            logger.error(
                 "Combined recording temp files missing; cannot mix. "
-                f"Existing: {[str(f) for f in self.temp_files if f.exists()]}"
+                f"Existing: {[str(f) for f in self.last_temp_files]}"
             )
+            raise RuntimeError("A recording leg is missing; available recovery files were preserved")
+
+    @staticmethod
+    def _is_valid_wav(path: Path) -> bool:
+        try:
+            if not path.exists() or path.stat().st_size <= 44:
+                return False
+            with wave.open(str(path), "rb") as wav:
+                return wav.getnframes() > 0 and wav.getframerate() > 0
+        except (OSError, wave.Error):
+            return False
+
+    def _close_stderr_files(self) -> None:
+        for stream in self._stderr_files:
+            try:
+                stream.close()
+            except OSError:
+                pass
+        self._stderr_files = []
 
     def _measure_wav_peak(self, path: Path) -> int:
         """Cheap peak-amplitude measurement (0..32767) for an s16 WAV.
@@ -1292,6 +1352,7 @@ class AudioRecorder:
         self.mic_process = None
         self.system_process = None
         self._stop_keepawake()
+        self._close_stderr_files()
 
 
 if __name__ == "__main__":

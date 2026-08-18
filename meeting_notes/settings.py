@@ -239,14 +239,14 @@ class SettingsScreen(Screen):
     }
     
     #settings-sidebar {
-        width: 25%;
+        width: 22;
         height: 100%;
         border-right: solid $primary;
         padding: 1;
     }
     
     #settings-content-wrapper {
-        width: 75%;
+        width: 1fr;
         height: 100%;
         layout: vertical;
     }
@@ -254,21 +254,21 @@ class SettingsScreen(Screen):
     #settings-content {
         width: 100%;
         height: 1fr;
-        padding: 2;
+        padding: 1 2;
         overflow-y: auto;
     }
     
     #settings-footer {
         width: 100%;
-        height: 5;
-        padding: 1 2;
+        height: 3;
+        padding: 0 1;
         background: $surface;
         border-top: solid $primary;
     }
     
     .sidebar-item {
-        padding: 1;
-        margin-bottom: 1;
+        padding: 0 1;
+        margin-bottom: 0;
     }
     
     .sidebar-item:hover {
@@ -276,15 +276,16 @@ class SettingsScreen(Screen):
     }
     
     .sidebar-item.-active {
-        background: $accent;
+        background: $boost;
         color: $text;
+        border-left: solid $accent;
     }
     
     .settings-section-title {
         text-style: bold;
         color: $accent;
         margin-bottom: 1;
-        margin-top: 2;
+        margin-top: 1;
     }
     
     .settings-field {
@@ -319,10 +320,21 @@ class SettingsScreen(Screen):
     .settings-action-button {
         margin: 0 1;
     }
+
+    SettingsScreen.compact #settings-container { layout: vertical; }
+    SettingsScreen.compact #settings-sidebar { width: 100%; height: 7; layout: horizontal; border-right: none; border-bottom: solid $primary; }
+    SettingsScreen.compact #settings-sidebar .settings-section-title { display: none; }
+    SettingsScreen.compact #settings-content-wrapper { width: 100%; height: 1fr; }
+    SettingsScreen.compact .sidebar-item { width: 1fr; min-width: 10; }
     """
     
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
+        ("ctrl+s", "save", "Save"),
+        ("1", "section_ai", "AI"),
+        ("2", "section_dirs", "Directories"),
+        ("3", "section_audio", "Audio"),
+        ("4", "section_editor", "Editor"),
         ("v", "view_config_file", "View Config File"),
     ]
     
@@ -336,11 +348,11 @@ class SettingsScreen(Screen):
         with Container(id="settings-container"):
             # Sidebar
             with Vertical(id="settings-sidebar"):
-                yield Static("⚙️  Settings", classes="settings-section-title")
-                yield Button("AI Models", id="section-ai", classes="sidebar-item -active")
-                yield Button("Directories", id="section-dirs", classes="sidebar-item")
-                yield Button("Audio", id="section-audio", classes="sidebar-item")
-                yield Button("Editor", id="section-editor", classes="sidebar-item")
+                yield Static("SETTINGS", classes="settings-section-title")
+                yield Button("[1] AI", id="section-ai", classes="sidebar-item -active")
+                yield Button("[2] Directories", id="section-dirs", classes="sidebar-item")
+                yield Button("[3] Audio", id="section-audio", classes="sidebar-item")
+                yield Button("[4] Editor", id="section-editor", classes="sidebar-item")
             
             # Content area wrapper (scrollable content + fixed footer)
             with Vertical(id="settings-content-wrapper"):
@@ -353,6 +365,9 @@ class SettingsScreen(Screen):
                     with Horizontal(id="settings-buttons"):
                         yield Button("Cancel", variant="default", id="cancel-button", classes="settings-action-button")
                         yield Button("Save", variant="primary", id="save-button", classes="settings-action-button")
+
+    def on_resize(self, event) -> None:
+        self.set_class(event.size.width <= 80, "compact")
     
     def render_ai_section(self) -> list:
         """Render AI Models section."""
@@ -826,9 +841,56 @@ class SettingsScreen(Screen):
                 item.remove_class("-active")
         
         await self.refresh_content()
+
+    async def action_section_ai(self) -> None:
+        await self.switch_section("ai")
+
+    async def action_section_dirs(self) -> None:
+        await self.switch_section("dirs")
+
+    async def action_section_audio(self) -> None:
+        await self.switch_section("audio")
+
+    async def action_section_editor(self) -> None:
+        await self.switch_section("editor")
+
+    def action_save(self) -> None:
+        """Save settings and close."""
+        self._capture_inputs()
+        self._save_config()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        field = {
+            "notes-dir-input": "notes_dir",
+            "rec-dir-input": "recordings_dir",
+            "trans-dir-input": "transcripts_dir",
+            "editor-input": "editor",
+            "terminal-file-browser-input": "terminal_file_browser",
+            "openai-key-input": "openai_api_key",
+            "anthropic-key-input": "anthropic_api_key",
+            "openrouter-key-input": "openrouter_api_key",
+        }.get(event.input.id or "")
+        if field:
+            self.config[field] = event.value
+
+    def _capture_inputs(self) -> None:
+        for widget_id, field in {
+            "notes-dir-input": "notes_dir",
+            "rec-dir-input": "recordings_dir",
+            "trans-dir-input": "transcripts_dir",
+            "editor-input": "editor",
+            "terminal-file-browser-input": "terminal_file_browser",
+            "openai-key-input": "openai_api_key",
+            "anthropic-key-input": "anthropic_api_key",
+            "openrouter-key-input": "openrouter_api_key",
+        }.items():
+            matches = self.query(f"#{widget_id}")
+            if matches:
+                self.config[field] = matches[0].value.strip()
     
     async def refresh_content(self) -> None:
         """Refresh the content area based on current section."""
+        self._capture_inputs()
         content = self.query_one("#settings-content", ScrollableContainer)
         await content.remove_children()
         
@@ -891,8 +953,8 @@ class SettingsScreen(Screen):
         else:
             self.app.notify("✗ Model installation failed", severity="error")
     
-    def action_save(self) -> None:
-        """Save settings and close."""
+    def _save_config(self) -> None:
+        """Validate and persist the current settings draft."""
         # Update config from inputs (only if they're currently mounted)
         try:
             notes_input = self.query("#notes-dir-input")

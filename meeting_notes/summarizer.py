@@ -145,7 +145,8 @@ PARTICIPANTS:
         try:
             # Use ollama run command
             result = subprocess.run(
-                ['ollama', 'run', self.model, prompt],
+                ['ollama', 'run', self.model],
+                input=prompt,
                 capture_output=True,
                 text=True,
                 timeout=300  # 5 minute timeout

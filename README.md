@@ -13,6 +13,8 @@ A local, privacy-focused AI meeting notetaker for Linux with a keyboard-driven T
 - **Note management** - Edit titles, manage tags, search, delete
 - **Settings UI** - Configure AI providers, API keys, models, paths
 - **Desktop integrations** - Editor, file manager, clipboard, notifications, and Omarchy Quattro
+- **Theme-aware TUI** - Uses the active Omarchy palette with responsive compact layouts
+- **Recovery-first recording** - Preserves separate mic/system audio if final mixing fails
 
 ## Quick Start
 
@@ -190,10 +192,16 @@ python run.py --dev
 - `A` - Audio Test (verify mic + system audio are working)
 - `q` - Quit
 - `↑↓` or `j/k` - Navigate list
+- `/` - Focus search
+- `1` / `2` - Jump between Meetings and Note panes
+- `Esc` - Clear search and return to the meeting list
 
 **Recording:**
 - `s` - Stop and process
-- `x` - Cancel
+- `x` - Cancel (requires confirmation)
+
+Recordings are never deleted automatically. If mixing or processing fails,
+the app retains available audio in the recordings directory for recovery.
 
 ### Settings
 
@@ -436,9 +444,9 @@ This is a personal project but suggestions and contributions are welcome!
 
 ```bash
 # Lightweight tests (matches CI — no whisper/torch needed)
-pip install pytest pytest-asyncio ruff openai anthropic openrouter pyyaml
+pip install pytest pytest-asyncio ruff textual openai anthropic openrouter pyyaml
 pytest tests/test_config.py tests/test_paths_and_fallbacks.py \
-       tests/test_recording_retention.py tests/test_summarizers.py
+       tests/test_summarizers.py tests/test_textual_smoke.py
 ruff check meeting_notes/ tests/
 
 # Full suite (also runs Textual headless smoke tests; needs the full env)

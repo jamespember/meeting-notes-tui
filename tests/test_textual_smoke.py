@@ -7,23 +7,20 @@ We just want to catch:
   - Switching providers in settings doesn't crash with the duplicate-ID
     error (the bug PR #9 fixed; this is a regression guard)
 
-These tests transitively import whisper (via meeting_notes.app →
-meeting_notes.transcriber), which pulls in torch. CI deliberately skips
-this file to keep install time fast — see .github/workflows/ci.yml. To
-run locally:
+Whisper is imported lazily by the transcriber, so these UI tests remain
+lightweight and run in CI without torch. To run locally:
 
     pip install -e ".[all,dev]"
     pytest tests/test_textual_smoke.py
 """
 import pytest
 
-# Skip the entire module if the heavy deps (whisper / textual) aren't
-# installed. Avoids confusing import errors for contributors who only
-# installed the lightweight test deps.
-pytest.importorskip("whisper", reason="run `pip install -e .[all,dev]` to enable Textual smoke tests")
+# Skip cleanly for contributors who only installed non-UI test dependencies.
 pytest.importorskip("textual", reason="run `pip install -e .[all,dev]` to enable Textual smoke tests")
 
-from meeting_notes.app import MeetingNotesApp  # noqa: E402  (deliberate import-after-skip)
+from meeting_notes.app import MeetingNotesApp, NoteViewer, RecordingView  # noqa: E402  (deliberate import-after-skip)
+from meeting_notes.settings import SettingsScreen  # noqa: E402
+from textual.widgets import Input, ListView  # noqa: E402
 
 
 @pytest.mark.asyncio
@@ -96,4 +93,80 @@ async def test_switching_providers_does_not_duplicate_widget_ids(tmp_path, monke
                 # — re-raise to fail loudly so the test gets updated.
                 raise
 
+        app.exit()
+
+
+@pytest.mark.asyncio
+async def test_compact_layout_and_settings_draft_survive_navigation(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    app = MeetingNotesApp()
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        assert app.has_class("compact")
+
+        await pilot.press("2")
+        await pilot.pause()
+        assert app.query_one("#note-viewer", NoteViewer).has_focus
+        await pilot.press("1")
+        await pilot.pause()
+        assert app.query_one("#meetings", ListView).has_focus
+
+        await pilot.press(",")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, SettingsScreen)
+        assert screen.has_class("compact")
+
+        await pilot.press("3")
+        await pilot.pause()
+        assert screen.current_section == "audio"
+        await pilot.press("1")
+        await pilot.pause()
+        assert screen.current_section == "ai"
+
+        await pilot.click("#section-dirs")
+        await pilot.pause()
+        notes_input = screen.query_one("#notes-dir-input", Input)
+        notes_input.value = str(tmp_path / "new-notes")
+        await pilot.pause()
+        await pilot.click("#section-ai")
+        await pilot.pause()
+
+        assert screen.config["notes_dir"] == str(tmp_path / "new-notes")
+        app.exit()
+
+
+@pytest.mark.asyncio
+async def test_stop_failure_restores_library_view(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    class FailingRecorder:
+        last_temp_files = [tmp_path / "temp-mic.wav"]
+
+        def is_recording(self):
+            return False
+
+        def stop_recording(self):
+            raise RuntimeError("mix failed")
+
+    app = MeetingNotesApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.recorder = FailingRecorder()
+        app.is_recording = True
+        app.recording_start_time = 1.0
+        app.query_one("#main-panels").display = False
+        await app.mount(RecordingView())
+        await pilot.pause()
+
+        app.action_stop_recording()
+        await pilot.pause()
+
+        assert not app.is_recording
+        assert app.recording_start_time is None
+        assert app.query_one("#main-panels").display
+        assert not app.query(RecordingView)
         app.exit()

@@ -23,6 +23,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import time
+import shutil
 from pathlib import Path
 from typing import List, Optional
 
@@ -92,12 +93,13 @@ class AudioTestScreen(ModalScreen):
     }
 
     #test-dialog {
-        width: 90;
-        height: auto;
-        max-height: 90%;
-        border: thick $primary;
+        width: 96%;
+        max-width: 100;
+        height: 96%;
+        border: solid $primary;
         background: $surface;
         padding: 1 2;
+        overflow-y: auto;
     }
 
     #test-title {
@@ -162,6 +164,10 @@ class AudioTestScreen(ModalScreen):
     .test-button {
         margin: 0 1;
     }
+
+    AudioTestScreen.compact #test-dialog { padding: 1; }
+    AudioTestScreen.compact #test-buttons { layout: vertical; height: auto; }
+    AudioTestScreen.compact .test-button { width: 100%; margin: 0; }
     """
 
     BINDINGS = [
@@ -184,16 +190,24 @@ class AudioTestScreen(ModalScreen):
         self._mic_temp: Optional[Path] = None
         self._sys_temp: Optional[Path] = None
         self._test_running = False
+        self._test_recorder: Optional[AudioRecorder] = None
+        self._test_dir: Optional[Path] = None
+        self._closed = False
         # Tracked so we always tear down the meter targeted at the right sink.
         self._resolved_sink: Optional[str] = None
 
     def compose(self) -> ComposeResult:
         with Container(id="test-dialog"):
-            yield Static("🎙️  Audio Test", id="test-title")
+            yield Static("󰍬  AUDIO TEST", id="test-title")
 
+            instruction = {
+                "mic": "speak into the microphone",
+                "system": "play audio through the selected output",
+                "combined": "speak and play audio through the selected output",
+            }.get(self.config.recording_mode, "make some noise")
             yield Static(
                 "[b]Space[/b] run test · [b]T[/b] play test tone · "
-                "[b]R[/b] refresh routing · [b]Esc[/b] close",
+                f"[b]R[/b] refresh routing · [b]Esc[/b] close\n[dim]During capture: {instruction}[/dim]",
                 id="test-status",
             )
 
@@ -201,11 +215,13 @@ class AudioTestScreen(ModalScreen):
             yield Static("", id="test-routing-warning")
             yield Static("", id="test-setup-health")
 
-            yield Static("Microphone:", classes="test-section-label")
-            yield Static("[dim]waiting…[/dim]", id="mic-meter", classes="test-meter-bar")
+            if self.config.recording_mode in ("mic", "combined"):
+                yield Static("Microphone:", classes="test-section-label")
+                yield Static("[dim]waiting…[/dim]", id="mic-meter", classes="test-meter-bar")
 
-            yield Static("System audio (sink monitor):", classes="test-section-label")
-            yield Static("[dim]waiting…[/dim]", id="sys-meter", classes="test-meter-bar")
+            if self.config.recording_mode in ("system", "combined"):
+                yield Static("System audio (sink monitor):", classes="test-section-label")
+                yield Static("[dim]waiting…[/dim]", id="sys-meter", classes="test-meter-bar")
 
             yield Static("", id="test-summary")
             yield Static("", id="test-summary-mic")
@@ -226,7 +242,18 @@ class AudioTestScreen(ModalScreen):
         self._refresh_routing_display()
         self._start_meters()
 
+    def on_resize(self, event) -> None:
+        self.set_class(event.size.width <= 60, "compact")
+
     def on_unmount(self) -> None:
+        self._closed = True
+        recorder = self._test_recorder
+        self._test_recorder = None
+        if recorder is not None and recorder.current_file is not None:
+            try:
+                recorder.cancel_recording()
+            except Exception:
+                logger.exception("audio-test: failed to cancel capture during close")
         self._stop_meters()
         if self._countdown_timer is not None:
             try:
@@ -240,10 +267,15 @@ class AudioTestScreen(ModalScreen):
                     path.unlink()
                 except Exception:
                     pass
+        if self._test_dir is not None:
+            shutil.rmtree(self._test_dir, ignore_errors=True)
+            self._test_dir = None
 
     # ----- routing display -----
 
     def action_refresh_routing(self) -> None:
+        if self._test_running:
+            return
         self._refresh_routing_display()
         # Restart meters so a newly busy sink gets monitored.
         self._stop_meters()
@@ -354,21 +386,22 @@ class AudioTestScreen(ModalScreen):
             self._resolved_sink or self.config.system_device or None
         )
 
-        mic = MicLevelMeter(on_level=self._on_mic_level, device=mic_device)
-        if mic.is_available():
-            mic.start()
-            self._mic_meter = mic
-        else:
-            self._set_meter("mic", "[dim]no capture tool installed[/dim]")
+        if self.config.recording_mode in ("mic", "combined"):
+            mic = MicLevelMeter(on_level=self._on_mic_level, device=mic_device)
+            if mic.is_available():
+                mic.start()
+                self._mic_meter = mic
+            else:
+                self._set_meter("mic", "[dim]no capture tool installed[/dim]")
 
-        if sys_device:
+        if self.config.recording_mode in ("system", "combined") and sys_device:
             sys = MicLevelMeter(on_level=self._on_sys_level, device=sys_device)
             if sys.is_available():
                 sys.start()
                 self._sys_meter = sys
             else:
                 self._set_meter("sys", "[dim]no capture tool installed[/dim]")
-        else:
+        elif self.config.recording_mode in ("system", "combined"):
             self._set_meter("sys", "[dim]no default sink detected[/dim]")
 
     def _stop_meters(self) -> None:
@@ -432,13 +465,24 @@ class AudioTestScreen(ModalScreen):
     def action_start_test(self) -> None:
         if self._test_running:
             return
+        if self._test_dir is not None:
+            shutil.rmtree(self._test_dir, ignore_errors=True)
+            self._test_dir = None
+            self._test_path = None
+            self._mic_temp = None
+            self._sys_temp = None
         self._test_running = True
         for bid in ("start-button", "play-button", "tone-button"):
             try:
                 self.query_one(f"#{bid}", Button).disabled = True
             except Exception:
                 pass
-        self._set_status(f"Recording for {_TEST_SECONDS}s — speak AND make sure something is playing through the sink!")
+        instruction = {
+            "mic": "speak into the microphone",
+            "system": "play audio through the selected output",
+            "combined": "speak and play audio through the selected output",
+        }.get(self.config.recording_mode, "make some noise")
+        self._set_status(f"Recording for {_TEST_SECONDS}s — {instruction}.")
         for sid in ("test-summary", "test-summary-mic", "test-summary-sys", "test-findings"):
             try:
                 self.query_one(f"#{sid}", Static).update("")
@@ -469,6 +513,10 @@ class AudioTestScreen(ModalScreen):
         )
         try:
             tmpdir = Path(tempfile.mkdtemp(prefix="meeting-notes-test-"))
+            if self._closed:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return
+            self._test_dir = tmpdir
             logger.debug(f"audio-test: tmpdir={tmpdir}")
             recorder = AudioRecorder(
                 output_dir=str(tmpdir),
@@ -477,9 +525,16 @@ class AudioTestScreen(ModalScreen):
                 mic_device=self.config.mic_device or None,
                 system_device=self.config.system_device or None,
             )
+            self._test_recorder = recorder
+            if self._closed:
+                recorder.cancel_recording()
+                return
 
             try:
                 recorder.start_recording("audio-test.wav")
+                if self._closed:
+                    recorder.cancel_recording()
+                    return
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"audio-test: start failed: {exc}", exc_info=True)
                 self._post_failure(f"Could not start capture: {exc}")
@@ -489,6 +544,7 @@ class AudioTestScreen(ModalScreen):
 
             try:
                 path = Path(recorder.stop_recording())
+                self._test_recorder = None
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"audio-test: stop failed: {exc}", exc_info=True)
                 self._post_failure(f"Could not stop capture: {exc}")
@@ -554,6 +610,17 @@ class AudioTestScreen(ModalScreen):
         except Exception as exc:  # noqa: BLE001
             logger.error(f"Test capture errored: {exc}", exc_info=True)
             self._post_failure(f"Unexpected error: {exc}")
+        finally:
+            recorder = self._test_recorder
+            self._test_recorder = None
+            if recorder is not None and recorder.current_file is not None:
+                try:
+                    recorder.cancel_recording()
+                except Exception:
+                    logger.exception("audio-test: failed to clean up recorder")
+            if self._closed and self._test_dir is not None:
+                shutil.rmtree(self._test_dir, ignore_errors=True)
+                self._test_dir = None
 
     def _post_report(
         self,
@@ -658,8 +725,7 @@ class AudioTestScreen(ModalScreen):
             try:
                 play_button = self.query_one("#play-button", Button)
                 play_button.disabled = (
-                    overall == "fail"
-                    or find_player() is None
+                    find_player() is None
                     or not path.exists()
                 )
             except Exception:
@@ -722,6 +788,8 @@ class AudioTestScreen(ModalScreen):
         so the user can verify that the system meter responds without
         needing Zoom/Meet/Firefox to be playing.
         """
+        if self._test_running:
+            return
         sink = self._resolved_sink
         if not sink:
             self._set_status("[red]No sink to play tone to.[/red]")

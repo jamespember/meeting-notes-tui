@@ -1,6 +1,7 @@
 """Configuration management for Meeting Notes."""
 
 import os
+import tempfile
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 class AppConfig:
     """Application configuration."""
     # AI Summarization
-    ai_provider: str = "anthropic"  # "openai", "anthropic", "openrouter", "local", or "none"
+    ai_provider: str = "none"  # "openai", "anthropic", "openrouter", "local", or "none"
     ai_model: str = "haiku"  # Model tier (varies by provider)
     
     # API Keys (or set environment variables)
@@ -44,7 +45,7 @@ class AppConfig:
     # "alsa_input.pci-0000_00_1f.3.analog-stereo").
     mic_device: str = ""
     system_device: str = ""  # Output sink whose monitor we record from
-    recording_retention_days: int = 30  # Auto-delete .wav files older than this on startup (0 to disable)
+    recording_retention_days: int = 0  # Retained for config compatibility; cleanup is now explicit only
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary."""
@@ -127,13 +128,19 @@ def save_config(config: AppConfig) -> None:
     logger.info(f"Saving config to: {config_path}")
     
     try:
-        with open(config_path, 'w') as f:
-            yaml.safe_dump(config.to_dict(), f, default_flow_style=False, sort_keys=False)
-        
-        # Set restrictive permissions (user read/write only) to protect API keys
-        import os
-        import stat
-        os.chmod(config_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
+        fd, temporary = tempfile.mkstemp(dir=config_path.parent, prefix=".config-", suffix=".yaml")
+        try:
+            os.fchmod(fd, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                yaml.safe_dump(config.to_dict(), f, default_flow_style=False, sort_keys=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary, config_path)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
         
         logger.info("Config saved successfully with secure permissions (600)")
     except Exception as e:
@@ -148,6 +155,17 @@ def validate_config(config: AppConfig) -> tuple[bool, Optional[str]]:
     Returns:
         (is_valid, error_message)
     """
+    string_fields = (
+        "ai_provider", "ai_model", "ollama_model", "whisper_model", "whisper_device",
+        "notes_dir", "recordings_dir", "transcripts_dir", "editor", "terminal_file_browser",
+        "recording_mode", "mic_device", "system_device",
+    )
+    for field in string_fields:
+        if not isinstance(getattr(config, field), str):
+            return False, f"Invalid {field}: expected text"
+    if not isinstance(config.recording_retention_days, int) or isinstance(config.recording_retention_days, bool):
+        return False, "Invalid recording_retention_days: expected an integer"
+
     # Validate AI provider
     valid_providers = ["openai", "anthropic", "openrouter", "local", "none"]
     if config.ai_provider not in valid_providers:

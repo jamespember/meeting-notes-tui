@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import List
+import wave
 
 import pytest
 
@@ -219,6 +220,40 @@ def test_cancel_does_not_invoke_ffmpeg_and_deletes_files(tmp_path, fake_pw_only,
     assert not Path(path).exists(), "final wav must be deleted"
     for tmp in temp_paths:
         assert not tmp.exists(), f"temp file {tmp} should have been deleted"
+
+
+def _write_test_wav(path: Path) -> None:
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(48000)
+        wav.writeframes(b"\x01\x00" * 480)
+
+
+def test_failed_mix_preserves_recovery_legs(tmp_path, fake_pw_only, capture_popen, monkeypatch):
+    monkeypatch.setattr(rec_module, "_get_default", lambda kind: "snk" if kind == "sink" else None)
+    rec = AudioRecorder(output_dir=str(tmp_path), mode="combined")
+    rec.start_recording("final.wav")
+    recovery_files = list(rec.temp_files)
+    for path in recovery_files:
+        _write_test_wav(path)
+    monkeypatch.setattr(rec, "_mix_combined", lambda inputs, output: False)
+
+    with pytest.raises(RuntimeError, match="separate mic and system files were preserved"):
+        rec.stop_recording()
+
+    assert rec.last_temp_files == recovery_files
+    assert all(path.exists() for path in recovery_files)
+    assert not (tmp_path / "final.wav").exists()
+
+
+def test_single_capture_requires_valid_wav(tmp_path, fake_pw_only, capture_popen):
+    rec = AudioRecorder(output_dir=str(tmp_path), mode="mic")
+    rec.start_recording("invalid.wav")
+    (tmp_path / "invalid.wav").write_bytes(b"")
+
+    with pytest.raises(RuntimeError, match="valid WAV"):
+        rec.stop_recording()
 
 
 def test_resolve_monitor_source_appends_monitor():

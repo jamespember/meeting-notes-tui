@@ -7,12 +7,12 @@ import subprocess
 import os
 import multiprocessing.resource_tracker
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.widgets import Static, Label, ListView, ListItem, Footer, Input, Button, TextArea
+from textual.widgets import Static, Label, ListView, ListItem, Footer, Input, Button, TextArea, Markdown
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.screen import Screen, ModalScreen
@@ -27,6 +27,7 @@ from meeting_notes.logger import setup_logging, get_logger
 from meeting_notes.level_meter import MicLevelMeter
 from meeting_notes.audio_test_screen import AudioTestScreen
 from meeting_notes.desktop import clear_status, notify_desktop, write_status
+from meeting_notes.theme import omarchy_theme
 
 # Initialize logging
 setup_logging(debug=False)
@@ -42,11 +43,11 @@ class RecordingView(Container):
         """Build the recording view UI."""
         with Vertical(id="recording-container"):
             # Two-column layout: status on left, inputs on right
-            with Horizontal(id="recording-columns"):
+            with ScrollableContainer(id="recording-columns"):
                 # Left column: Recording status and monitoring info
                 with Vertical(id="recording-left-column"):
                     # Status header
-                    yield Static("🔴  RECORDING", id="recording-status")
+                    yield Static("󰦕  RECORDING", id="recording-status")
 
                     # Timer display
                     yield Static("00:00", id="recording-timer")
@@ -89,10 +90,7 @@ class RecordingView(Container):
                     yield Static("Your Notes:", id="notes-label")
                     yield TextArea(id="user-notes-input", language="markdown")
             
-            # Instruction hints at the bottom (full width)
-            yield Static("Press 's' to stop and process recording", id="stop-hint")
-            yield Static("Press 'x' to cancel and discard recording", id="cancel-hint")
-            yield Static("Press 'Esc' to unfocus title input", id="esc-hint")
+            yield Static("S  Stop and process    X  Discard    ESC  Leave editor", id="recording-hints")
     
     def watch_elapsed_time(self, time: int) -> None:
         """Update timer display when elapsed_time changes."""
@@ -191,7 +189,7 @@ class MeetingListItem(ListItem):
         
         # Build label with tags if present
         tags_display = f" [{', '.join(self.tags)}]" if self.tags else ""
-        label_text = f"{self.date} {self.time}\n{self.title}{tags_display}\n({self.word_count} words)"
+        label_text = f"{self.title}{tags_display}\n[dim]{self.date} {self.time} · {self.word_count} words[/dim]"
         super().__init__(Label(label_text))
     
     def matches_search(self, query: str) -> bool:
@@ -237,7 +235,7 @@ class NoteViewer(ScrollableContainer):
                 content += "\n\n---\n\n*This is an old format note. The transcript has been hidden. Press 't' to view in a separate window.*"
             
             self.remove_children()
-            self.mount(Static(content))
+            self.mount(Markdown(content))
             
         except Exception as e:
             self.remove_children()
@@ -258,9 +256,10 @@ class ManageTagsScreen(ModalScreen[list]):
     }
     
     #tags-dialog {
-        width: 60;
+        width: 80%;
+        max-width: 60;
         height: auto;
-        border: thick $primary;
+        border: solid $primary;
         background: $surface;
         padding: 1 2;
     }
@@ -298,6 +297,8 @@ class ManageTagsScreen(ModalScreen[list]):
         margin: 0 1;
     }
     """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
     
     def __init__(self, current_tags: list, **kwargs):
         super().__init__(**kwargs)
@@ -345,6 +346,9 @@ class ManageTagsScreen(ModalScreen[list]):
         else:
             self.dismiss([])
 
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
 
 class TranscriptViewer(ModalScreen):
     """Modal screen for viewing full transcript."""
@@ -357,7 +361,7 @@ class TranscriptViewer(ModalScreen):
     #transcript-container {
         width: 90%;
         height: 90%;
-        border: thick $primary;
+        border: solid $primary;
         background: $surface;
         padding: 0;
     }
@@ -438,9 +442,10 @@ class EditTitleScreen(ModalScreen[str]):
     }
     
     #edit-dialog {
-        width: 60;
+        width: 80%;
+        max-width: 60;
         height: auto;
-        border: thick $primary;
+        border: solid $primary;
         background: $surface;
         padding: 1 2;
     }
@@ -467,6 +472,8 @@ class EditTitleScreen(ModalScreen[str]):
         margin: 0 1;
     }
     """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
     
     def __init__(self, current_title: str, **kwargs):
         super().__init__(**kwargs)
@@ -500,6 +507,9 @@ class EditTitleScreen(ModalScreen[str]):
         if new_title:
             self.dismiss(new_title)
 
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
 
 class ConfirmDeleteScreen(ModalScreen):
     """Modal screen for confirming meeting deletion."""
@@ -510,9 +520,10 @@ class ConfirmDeleteScreen(ModalScreen):
     }
     
     #confirm-dialog {
-        width: 60;
+        width: 80%;
+        max-width: 60;
         height: auto;
-        border: thick $error;
+        border: solid $error;
         background: $surface;
         padding: 1 2;
     }
@@ -534,6 +545,8 @@ class ConfirmDeleteScreen(ModalScreen):
         margin: 0 1;
     }
     """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
     
     def __init__(self, meeting_title: str, **kwargs):
         super().__init__(**kwargs)
@@ -542,7 +555,11 @@ class ConfirmDeleteScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Container(id="confirm-dialog"):
             yield Static("⚠️  Delete Meeting?", id="confirm-title")
-            yield Static(f'Are you sure you want to delete:\n"{self.meeting_title}"?\n\nThis cannot be undone.', id="confirm-message")
+            yield Static(
+                f'Are you sure you want to delete:\n"{self.meeting_title}"?\n\n'
+                "The meeting note and transcript will be removed. This cannot be undone.",
+                id="confirm-message",
+            )
             with Horizontal(id="confirm-buttons"):
                 yield Button("Cancel", variant="primary", id="cancel-button", classes="confirm-button")
                 yield Button("Delete", variant="error", id="delete-button", classes="confirm-button")
@@ -553,6 +570,42 @@ class ConfirmDeleteScreen(ModalScreen):
         else:
             self.dismiss(False)
 
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
+class ConfirmDiscardScreen(ModalScreen[bool]):
+    """Confirm destructive cancellation of an active recording."""
+
+    CSS = """
+    ConfirmDiscardScreen { align: center middle; }
+    #discard-dialog {
+        width: 80%;
+        max-width: 60;
+        height: auto;
+        border: solid $error;
+        background: $surface;
+        padding: 1 2;
+    }
+    #discard-actions { height: auto; align: center middle; margin-top: 1; }
+    #discard-actions Button { margin: 0 1; }
+    """
+
+    BINDINGS = [("escape", "keep", "Keep recording")]
+
+    def compose(self) -> ComposeResult:
+        with Container(id="discard-dialog"):
+            yield Static("Discard this recording?\n\nCaptured audio and notes will be permanently removed.")
+            with Horizontal(id="discard-actions"):
+                yield Button("Keep recording", variant="primary", id="keep-recording")
+                yield Button("Discard", variant="error", id="discard-recording")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "discard-recording")
+
+    def action_keep(self) -> None:
+        self.dismiss(False)
+
 
 class MeetingNotesApp(App):
     """Main application with Lazygit-inspired layout."""
@@ -560,6 +613,25 @@ class MeetingNotesApp(App):
     CSS = """
     Screen {
         layout: vertical;
+        background: $background;
+    }
+
+    #app-header {
+        height: 3;
+        padding: 1 2;
+        color: $text;
+        background: $surface;
+        border-bottom: solid $primary 40%;
+        text-style: bold;
+    }
+
+    #processing-banner {
+        display: none;
+        height: 3;
+        padding: 1 2;
+        color: $text;
+        background: $boost;
+        border-bottom: solid $primary;
     }
     
     #main-panels {
@@ -570,8 +642,8 @@ class MeetingNotesApp(App):
     #meetings-panel {
         width: 35%;
         height: 100%;
-        border: solid $primary;
-        padding: 1;
+        border: solid $text-muted 40%;
+        padding: 0 1;
     }
     
     #search-input {
@@ -582,23 +654,28 @@ class MeetingNotesApp(App):
     #note-panel {
         width: 65%;
         height: 100%;
-        border: solid $primary;
-        padding: 1;
+        border: solid $text-muted 40%;
+        padding: 0 1;
         margin-left: 1;
+    }
+
+    #meetings-panel:focus-within,
+    #note-panel:focus-within {
+        border: solid $accent;
     }
     
     RecordingView {
         width: 100%;
         height: 100%;
         border: solid $error;
-        padding: 2;
+        padding: 1;
         background: $panel;
         align: center middle;
     }
     
     #recording-container {
-        width: 90%;
-        height: 90%;
+        width: 100%;
+        height: 100%;
         align: center middle;
     }
     
@@ -611,21 +688,20 @@ class MeetingNotesApp(App):
     #recording-left-column {
         width: 40%;
         height: 100%;
-        padding: 2;
-        align: center top;
+        padding: 1;
     }
     
     #recording-right-column {
         width: 60%;
         height: 100%;
-        padding: 2;
+        padding: 1;
     }
     
     #recording-status {
         text-align: center;
         text-style: bold;
         color: $error;
-        margin: 2 0;
+        margin: 1 0 0 0;
         content-align: center middle;
     }
     
@@ -633,18 +709,18 @@ class MeetingNotesApp(App):
         text-align: center;
         text-style: bold;
         color: $text;
-        height: 5;
+        height: 3;
         content-align: center middle;
-        margin: 2 0;
+        margin: 0 0 1 0;
     }
     
     #audio-device-info {
         text-align: center;
         color: $text-muted;
-        margin: 2 0;
-        padding: 1;
+        margin: 1 0;
+        padding: 0 1;
         background: $panel;
-        border: solid $primary;
+        border: solid $text-muted 40%;
         width: 100%;
     }
 
@@ -692,25 +768,25 @@ class MeetingNotesApp(App):
         height: 1fr;
     }
     
-    #stop-hint, #cancel-hint, #esc-hint {
+    #recording-hints {
         text-align: center;
         color: $text-muted;
-        margin-top: 1;
+        height: 1;
     }
     
-    .panel-title {
-        text-style: bold;
-        color: $accent;
-        margin-bottom: 1;
+    #meetings-panel, #note-panel {
+        border-title-color: $accent;
+        border-title-style: bold;
     }
-    
+
     ListView {
         height: 1fr;
         margin-top: 1;
     }
     
     ListItem {
-        padding: 1 0;
+        padding: 0;
+        height: 2;
     }
     
     ListItem:hover {
@@ -720,6 +796,14 @@ class MeetingNotesApp(App):
     Footer {
         background: $panel;
     }
+
+    .compact #main-panels { layout: vertical; }
+    .compact #meetings-panel { width: 100%; height: 45%; }
+    .compact #note-panel { width: 100%; height: 55%; margin-left: 0; margin-top: 1; }
+    .compact #recording-columns { layout: vertical; }
+    .compact #recording-left-column { width: 100%; height: auto; }
+    .compact #recording-right-column { width: 100%; min-height: 14; }
+    .compact #audio-device-info { display: none; }
     """
     
     BINDINGS = [
@@ -736,11 +820,19 @@ class MeetingNotesApp(App):
         Binding("T", "manage_tags", "Tags", show=True),
         Binding("comma", "open_settings", "Settings", show=True),
         Binding("A", "audio_test", "Audio Test", show=True),
+        Binding("slash", "focus_search", "Search", show=True),
+        Binding("1", "focus_meetings", "Meetings", show=True),
+        Binding("2", "focus_note", "Note", show=True),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("escape", "back", "Back", show=False),
         Binding("q", "quit", "Quit", show=True),
     ]
     
     def __init__(self, dev_mode: bool = False):
         super().__init__()
+        self.register_theme(omarchy_theme())
+        self.theme = "omarchy"
         self.dev_mode = dev_mode
         
         # Load configuration
@@ -750,7 +842,9 @@ class MeetingNotesApp(App):
         valid, error = validate_config(self.config)
         if not valid:
             print(f"Warning: Config validation failed: {error}")
-            print("Using default values for invalid settings")
+            print("Starting in transcription-only safe mode")
+            logger.error(f"Invalid configuration; using safe defaults: {error}")
+            self.config = AppConfig(ai_provider="none")
         
         # Initialize components with config values
         self.recorder: Optional[AudioRecorder] = None
@@ -810,46 +904,19 @@ class MeetingNotesApp(App):
         # meeting.
         self._warned_misrouted_apps: set[str] = set()
 
-        # Clean up old recordings on startup
-        self._cleanup_old_recordings()
-
-    def _cleanup_old_recordings(self) -> None:
-        """Delete .wav recordings older than recording_retention_days.
-
-        No-op if retention_days <= 0 or the recordings dir doesn't exist.
-        Errors are logged but not raised — cleanup is best-effort.
-        """
-        retention_days = getattr(self.config, "recording_retention_days", 0)
-        if retention_days <= 0:
-            return
-        recordings_dir = Path(self.config.recordings_dir).expanduser()
-        if not recordings_dir.is_dir():
-            return
-        cutoff = datetime.now() - timedelta(days=retention_days)
-        for wav_file in recordings_dir.glob("*.wav"):
-            try:
-                if datetime.fromtimestamp(wav_file.stat().st_mtime) < cutoff:
-                    logger.info(
-                        f"Removing old recording: {wav_file.name} "
-                        f"(older than {retention_days} days)"
-                    )
-                    wav_file.unlink()
-            except Exception as e:
-                logger.warning(f"Failed to remove {wav_file.name}: {e}")
-
     def compose(self) -> ComposeResult:
         """Build the UI."""
+        yield Static("󰗠  MEETING NOTES", id="app-header")
+        yield Static("", id="processing-banner")
         # Main content area
         with Container(id="main-panels"):
             # Meetings list panel
             with Vertical(id="meetings-panel"):
-                yield Static("Meeting Notes", classes="panel-title")
                 yield Input(placeholder="Search meetings...", id="search-input")
                 yield ListView(id="meetings")
             
             # Note viewer panel  
             with Vertical(id="note-panel"):
-                yield Static("Note Preview", classes="panel-title")
                 yield NoteViewer(id="note-viewer")
         
         # Footer with keyboard shortcuts
@@ -863,6 +930,13 @@ class MeetingNotesApp(App):
         
         self.title = "Meeting Notes"
         self.sub_title = "Keyboard-driven meeting recorder"
+
+        # Set pane titles with keyboard hints
+        meetings_panel = self.query_one("#meetings-panel", Vertical)
+        meetings_panel.border_title = "[1] Meetings"
+        note_panel = self.query_one("#note-panel", Vertical)
+        note_panel.border_title = "[2] Note"
+
         self.load_meetings()
         
         # Initialize recorder with config
@@ -887,6 +961,9 @@ class MeetingNotesApp(App):
             meetings_list.focus()
         except Exception as e:
             logger.warning(f"Could not focus on meetings list: {e}")
+
+    def on_resize(self, event) -> None:
+        self.set_class(event.size.width <= 100, "compact")
     
     def on_unmount(self) -> None:
         """Cleanup when app exits."""
@@ -964,6 +1041,11 @@ class MeetingNotesApp(App):
         if isinstance(event.item, MeetingListItem):
             viewer = self.query_one("#note-viewer", NoteViewer)
             viewer.show_note(event.item.note_path)
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Keep the preview synchronized with keyboard navigation."""
+        if isinstance(event.item, MeetingListItem):
+            self.query_one("#note-viewer", NoteViewer).show_note(event.item.note_path)
     
     def on_input_changed(self, event: Input.Changed) -> None:
         """Handle search input changes."""
@@ -987,11 +1069,56 @@ class MeetingNotesApp(App):
             # Hide from the footer while recording — running the test mid-meeting
             # would fight the recorder for the same source.
             return not self.is_recording and not self.is_processing
+        elif self.is_recording and action in {
+            "open_in_editor", "copy_to_clipboard", "copy_path", "show_in_folder",
+            "delete_meeting", "edit_title", "view_transcript", "manage_tags",
+            "open_settings", "quit",
+        }:
+            return False
+        elif self.is_processing and action in {"open_settings", "quit"}:
+            return False
         return True  # All other actions always available
+
+    def action_focus_search(self) -> None:
+        search = self.query_one("#search-input", Input)
+        search.focus()
+
+    def action_focus_meetings(self) -> None:
+        if not self.is_recording:
+            self.query_one("#meetings", ListView).focus()
+
+    def action_focus_note(self) -> None:
+        if not self.is_recording:
+            self.query_one("#note-viewer", NoteViewer).focus()
+
+    def action_cursor_down(self) -> None:
+        meeting_list = self.query_one("#meetings", ListView)
+        meeting_list.focus()
+        meeting_list.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        meeting_list = self.query_one("#meetings", ListView)
+        meeting_list.focus()
+        meeting_list.action_cursor_up()
+
+    def action_back(self) -> None:
+        search = self.query_one("#search-input", Input)
+        if search.has_focus or search.value:
+            search.value = ""
+            self.query_one("#meetings", ListView).focus()
     
     def update_recording_timer(self) -> None:
         """Called every second to update recording timer."""
         if self.is_recording and self.recording_start_time:
+            if self.recorder is not None and not self.recorder.is_healthy():
+                logger.error("A recording process exited unexpectedly; stopping remaining capture")
+                self.notify(
+                    "A recording source stopped unexpectedly. Recovering captured audio now.",
+                    severity="error",
+                    timeout=12,
+                )
+                self.action_stop_recording()
+                return
             elapsed = int(time.time() - self.recording_start_time)
             duration_str = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
 
@@ -1107,7 +1234,8 @@ class MeetingNotesApp(App):
         else:
             color = "green"
         bar = f"[{color}]{'█' * filled}[/{color}][dim]{'░' * (width - filled)}[/dim]"
-        return f"{bar}  {int(level * 100):3d}%"
+        state = "SILENT" if level < 0.01 else "LOW" if level < 0.08 else "CLIP" if level >= 0.9 else "GOOD"
+        return f"{bar}  {int(level * 100):3d}% {state}"
 
     def _maybe_log_peaks(self) -> None:
         """Once every ~5s, log the running peak levels so the file log can
@@ -1324,6 +1452,11 @@ class MeetingNotesApp(App):
                 
             except Exception as e:
                 logger.error(f"Failed to start recording: {e}", exc_info=True)
+                if self.recorder is not None and self.recorder.current_file is not None:
+                    try:
+                        self.recorder.cancel_recording()
+                    except Exception:
+                        logger.exception("Failed to clean up recorder after UI startup error")
                 self.notify(f"Failed to start recording: {e}", severity="error")
                 self.is_recording = False
                 self._write_desktop_status("ready")
@@ -1336,6 +1469,16 @@ class MeetingNotesApp(App):
                     pass
     
     def action_cancel_recording(self) -> None:
+        """Ask before discarding an active recording."""
+        if not self.is_recording:
+            return
+        self.push_screen(ConfirmDiscardScreen(), self._handle_discard_confirmation)
+
+    def _handle_discard_confirmation(self, confirmed: Optional[bool]) -> None:
+        if confirmed:
+            self._discard_recording()
+
+    def _discard_recording(self) -> None:
         """Cancel recording and discard without processing."""
         logger.info("Cancelling recording")
         if not self.is_recording or not self.recorder:
@@ -1386,7 +1529,7 @@ class MeetingNotesApp(App):
     def action_stop_recording(self) -> None:
         """Stop recording, get title if provided, and process."""
         logger.info("Stopping recording")
-        if self.recorder and self.recorder.is_recording():
+        if self.recorder and self.is_recording:
             try:
                 # Get meeting title if provided
                 meeting_title = None
@@ -1456,6 +1599,7 @@ class MeetingNotesApp(App):
 
                 self.is_processing = True
                 self._write_desktop_status("processing")
+                self._set_processing_stage("󰄬  Preparing transcription…")
                 
                 # Remove recording view
                 try:
@@ -1479,9 +1623,25 @@ class MeetingNotesApp(App):
             except Exception as e:
                 logger.error(f"Failed to stop recording: {e}", exc_info=True)
                 self.notify(f"Failed to stop recording: {e}", severity="error")
+                if self.recorder.last_temp_files:
+                    self.notify(
+                        "Separate mic/system recovery files were preserved in the recordings directory.",
+                        severity="warning",
+                        timeout=15,
+                    )
                 self.is_recording = False
                 self.is_processing = False
+                self.recording_start_time = None
                 self._write_desktop_status("ready")
+                try:
+                    self.query_one(RecordingView).remove()
+                except Exception:
+                    pass
+                try:
+                    self.query_one("#main-panels", Container).display = True
+                except Exception:
+                    pass
+                self.refresh_bindings()
                 notify_desktop("Recording could not be stopped. Open the app for details.", urgency="critical")
     
     @work(exclusive=True, thread=True)
@@ -1491,11 +1651,13 @@ class MeetingNotesApp(App):
         try:
             # Load Whisper model (if not already loaded)
             logger.info("Loading Whisper model")
+            self.call_from_thread(self._set_processing_stage, f"󰄬  Loading Whisper {self.config.whisper_model}…")
             self.call_from_thread(self.notify, f"Loading Whisper {self.config.whisper_model} model...", severity="information")
             self.transcriber.load_model()
             
             # Transcribe
             logger.info("Starting transcription")
+            self.call_from_thread(self._set_processing_stage, "󰄬  Transcribing audio…")
             self.call_from_thread(self.notify, "Transcribing audio (this may take a few minutes)...", severity="information")
             result = self.transcriber.transcribe(audio_path)
             
@@ -1511,6 +1673,7 @@ class MeetingNotesApp(App):
             
             # Generate note with AI summary (pass custom title if provided)
             logger.info("Creating note with AI summary")
+            self.call_from_thread(self._set_processing_stage, "󰄬  Generating meeting note…")
             duration = result.segments[-1].end if result.segments else 0
             note_path, transcript_path, ai_error = self.note_maker.create_note(
                 transcript_text=result.text,
@@ -1542,6 +1705,7 @@ class MeetingNotesApp(App):
             self._write_desktop_status("ready")
             self.is_processing = False
             try:
+                self.call_from_thread(self._set_processing_stage, "")
                 self.call_from_thread(self.refresh_bindings)
             except Exception:
                 pass
@@ -1802,9 +1966,41 @@ class MeetingNotesApp(App):
             viewer = self.query_one("#note-viewer", NoteViewer)
             if viewer.current_note:
                 try:
-                    # Delete the file
-                    os.remove(viewer.current_note)
-                    self.notify(f"✓ Deleted meeting", severity="information")
+                    note_path = Path(viewer.current_note)
+                    transcript_path = None
+                    content = note_path.read_text(encoding="utf-8")
+                    if content.startswith("---"):
+                        parts = content.split("---", 2)
+                        if len(parts) >= 2:
+                            for line in parts[1].splitlines():
+                                if line.strip().startswith("transcript_file:"):
+                                    filename = line.split(":", 1)[1].strip().strip('"')
+                                    base = Path(self.config.transcripts_dir).expanduser().resolve()
+                                    candidate = (base / filename).resolve()
+                                    if candidate.is_relative_to(base):
+                                        transcript_path = candidate
+                                    break
+
+                    staged_note = note_path.with_name(f".{note_path.name}.deleting-{os.getpid()}")
+                    staged_transcript = None
+                    note_path.replace(staged_note)
+                    try:
+                        if transcript_path and transcript_path.exists():
+                            staged_transcript = transcript_path.with_name(
+                                f".{transcript_path.name}.deleting-{os.getpid()}"
+                            )
+                            transcript_path.replace(staged_transcript)
+                    except Exception:
+                        staged_note.replace(note_path)
+                        raise
+
+                    for staged in (staged_note, staged_transcript):
+                        if staged is not None:
+                            try:
+                                staged.unlink()
+                            except OSError:
+                                logger.warning(f"Could not purge staged deleted file: {staged}")
+                    self.notify("✓ Deleted meeting and transcript", severity="information")
                     
                     # Clear viewer
                     viewer.show_empty()
@@ -2014,6 +2210,9 @@ class MeetingNotesApp(App):
     
     def action_open_settings(self) -> None:
         """Open the settings screen."""
+        if self.is_recording or self.is_processing:
+            self.notify("Settings are unavailable while recording or processing", severity="warning")
+            return
         self.push_screen(SettingsScreen(self.config), self.handle_settings_closed)
 
     def action_audio_test(self) -> None:
@@ -2022,11 +2221,16 @@ class MeetingNotesApp(App):
         Disabled while a real recording is in flight so the test capture
         can't fight the meeting capture for the same source.
         """
-        if self.is_recording:
+        if self.is_recording or self.is_processing:
             self.notify("Stop the current recording before running the audio test.",
                         severity="warning")
             return
         self.push_screen(AudioTestScreen(self.config))
+
+    def _set_processing_stage(self, message: str) -> None:
+        banner = self.query_one("#processing-banner", Static)
+        banner.update(message)
+        banner.display = bool(message)
     
     def handle_settings_closed(self, new_config: Optional[AppConfig]) -> None:
         """Handle settings screen closing."""

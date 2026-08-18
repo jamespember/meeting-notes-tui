@@ -325,6 +325,9 @@ def diagnose(
     else:
         verdict = "pass"
 
+    if stats.duration_seconds < expected_min_seconds and verdict == "pass":
+        verdict = "warn"
+
     if stats.silent_ratio >= 0.5:
         if leg == "system":
             silence_advice = (

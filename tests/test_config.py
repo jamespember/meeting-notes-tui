@@ -3,9 +3,9 @@ from meeting_notes.config import AppConfig, validate_config
 
 
 def test_default_recording_retention_days():
-    """The retention field should default to 30 days (jmalobicky fork)."""
+    """Recordings are never deleted automatically."""
     cfg = AppConfig()
-    assert cfg.recording_retention_days == 30
+    assert cfg.recording_retention_days == 0
 
 
 def test_recording_retention_days_can_be_disabled():
@@ -39,10 +39,10 @@ def test_unknown_keys_in_from_dict_are_ignored():
     assert cfg.ai_provider == "anthropic"
 
 
-def test_default_provider_is_anthropic():
-    """Sanity check: the default cloud provider hasn't drifted."""
+def test_default_provider_is_none():
+    """A fresh install works without requiring a cloud credential."""
     cfg = AppConfig()
-    assert cfg.ai_provider == "anthropic"
+    assert cfg.ai_provider == "none"
     assert cfg.ai_model == "haiku"
 
 

@@ -124,7 +124,7 @@ def bar_status() -> int:
                 "tooltip": "Meeting Notes is ready",
                 "class": "ready",
             }
-    except (FileNotFoundError, KeyError, TypeError, ValueError, OSError):
+    except (FileNotFoundError, KeyError, TypeError, ValueError, OSError, ProcessLookupError):
         pass
 
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
