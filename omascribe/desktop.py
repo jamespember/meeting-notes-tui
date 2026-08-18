@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from . import config
+
 
 VALID_STATES = {"ready", "recording", "processing"}
 
@@ -127,6 +129,68 @@ def bar_status() -> int:
     except (FileNotFoundError, KeyError, TypeError, ValueError, OSError, ProcessLookupError):
         pass
 
+    print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    return 0
+
+
+def _read_status_payload() -> dict | None:
+    """Return the live status payload, or None when no app is running."""
+    try:
+        payload = json.loads(status_path().read_text(encoding="utf-8"))
+        if not _process_matches(payload):
+            raise ProcessLookupError
+        return payload
+    except (FileNotFoundError, KeyError, TypeError, ValueError, OSError, ProcessLookupError):
+        return None
+
+
+def _frontmatter_value(text: str, key: str) -> str:
+    """Parse a quoted or bare scalar out of YAML frontmatter."""
+    for line in text.splitlines()[:20]:
+        if line.startswith(f"{key}:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return ""
+
+
+def panel_data() -> int:
+    """Print a JSON blob for the Omarchy control panel: status + recent notes."""
+    payload = _read_status_payload()
+    if payload:
+        status = {
+            "state": payload.get("state", "ready"),
+            "duration": str(payload.get("duration") or "00:00"),
+        }
+    else:
+        status = {"state": "ready", "duration": ""}
+
+    config_obj = config.load_config()
+    notes_dir = Path(config_obj.notes_dir).expanduser().absolute()
+    recent = []
+    try:
+        if notes_dir.is_dir():
+            candidates = sorted(notes_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)[:8]
+            for note in candidates:
+                try:
+                    text = note.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                recent.append(
+                    {
+                        "title": _frontmatter_value(text, "title") or note.stem,
+                        "date": _frontmatter_value(text, "date"),
+                        "words": _frontmatter_value(text, "word_count"),
+                        "path": str(note),
+                    }
+                )
+    except OSError:
+        pass
+
+    result = {
+        "status": status,
+        "notes_dir": str(notes_dir),
+        "config_path": str(config.get_config_path()),
+        "recent": recent,
+    }
     print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return 0
 

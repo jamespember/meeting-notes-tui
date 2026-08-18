@@ -80,6 +80,7 @@ ignore = [
 [project.scripts]
 omascribe = "omascribe.app:run"
 omascribe-status = "omascribe.desktop:bar_status"
+omascribe-panel = "omascribe.desktop:panel_data"
 
 [project.urls]
 Homepage = "https://github.com/jamespember/omascribe"

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "omascribe.control",
+  "name": "Omascribe control",
+  "version": "1.0.0",
+  "author": "James Pember",
+  "license": "MIT",
+  "description": "Record, transcribe, and summarise meetings from the Omarchy bar: live recording status, quick actions, and recent notes.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Omascribe",
+    "description": "Recording status with a live timer, quick actions (launch, notes, settings), and the most recent meeting notes.",
+    "category": "Productivity",
+    "aliases": ["omascribe", "record", "meeting-notes"],
+    "allowMultiple": false,
+    "defaults": {
+      "refreshIntervalSec": 1,
+      "maxRecent": 6
+    },
+    "schema": [
+      { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 1, "max": 30, "step": 1, "defaultValue": 1 },
+      { "key": "maxRecent", "type": "integer", "label": "Recent meetings shown", "min": 0, "max": 12, "step": 1, "defaultValue": 6 }
+    ]
+  }
+}

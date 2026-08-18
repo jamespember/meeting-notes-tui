@@ -22,6 +22,19 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$HOME/.local/share/applications"
 fi
 
+# Install the Omascribe control-panel bar plugin
+plugin_src="$ROOT_DIR/integrations/omarchy/omascribe-control"
+plugin_dst="$HOME/.config/omarchy/plugins/omascribe.control"
+if [[ -d $plugin_src ]]; then
+    if ! omarchy plugin validate "$plugin_src" >/dev/null 2>&1; then
+        echo "ERROR: Omascribe control panel plugin failed validation." >&2
+        exit 1
+    fi
+    mkdir -p "$plugin_dst"
+    install -Dm644 "$plugin_src/manifest.json" "$plugin_dst/manifest.json"
+    install -Dm644 "$plugin_src/Panel.qml" "$plugin_dst/Panel.qml"
+fi
+
 bindings="$HOME/.config/hypr/bindings.lua"
 mkdir -p "$(dirname "$bindings")"
 touch "$bindings"
@@ -51,14 +64,11 @@ jq '
   | .bar.layout = (.bar.layout // {})
   | .bar.layout.right = (.bar.layout.right // [])
   | .bar.layout.right = (
-      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "omascribe")]
+      [.bar.layout.right[] | select((if type == "object" then (.id // "") else . end) != "omascribe.control")]
       + [{
-          "id": "omascribe",
-          "type": "command",
-          "exec": "omascribe-status",
-          "interval": 1,
-          "tooltip": "Omascribe",
-          "onClick": "omarchy-launch-or-focus-tui omascribe"
+          "id": "omascribe.control",
+          "refreshIntervalSec": 1,
+          "maxRecent": 6
         }]
     )
 ' "$source_config" > "$tmp"
