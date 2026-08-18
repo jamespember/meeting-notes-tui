@@ -12,7 +12,7 @@ A local, privacy-focused AI meeting notetaker for Linux with a keyboard-driven T
 - **Markdown notes** - Full transcripts with timestamps
 - **Note management** - Edit titles, manage tags, search, delete
 - **Settings UI** - Configure AI providers, API keys, models, paths
-- **Integrations** - Editor, file manager, clipboard, Waybar status
+- **Desktop integrations** - Editor, file manager, clipboard, notifications, and Omarchy Quattro
 
 ## Quick Start
 
@@ -30,10 +30,20 @@ cd meeting-notes
 ```
 
 The setup script will:
-1. Check system dependencies (ffmpeg, pulseaudio)
+1. Check system dependencies (PipeWire, Pulse compatibility, ffmpeg)
 2. Create a Python virtual environment
-3. Install all Python dependencies
-4. Let you choose between Cloud AI, Local AI (Ollama), or no AI
+3. Install the `meeting-notes` and `meeting-notes-status` commands
+4. Configure Omarchy Quattro automatically when detected
+5. Let you choose between Cloud AI, Local AI (Ollama), or no AI
+
+On Omarchy Quattro, setup adds:
+
+- `SUPER + M` to launch or focus Meeting Notes
+- Meeting Notes to the native Apps menu
+- A clickable recording/processing indicator in the Quickshell bar
+- Clickable desktop notifications for important recording events
+
+Existing Hyprland and Omarchy shell files are backed up before setup changes them.
 
 ### Manual Setup
 
@@ -42,11 +52,14 @@ If you prefer to set up manually:
 #### 1. Install System Dependencies
 
 ```bash
+# Omarchy Quattro
+omarchy pkg add python ffmpeg pipewire libpulse wl-clipboard
+
 # Arch Linux
-sudo pacman -S python python-pip ffmpeg portaudio
+sudo pacman -S python ffmpeg pipewire pipewire-pulse libpulse wl-clipboard
 
 # Ubuntu / Debian
-sudo apt install python3 python3-pip python3-venv ffmpeg portaudio19-dev pulseaudio-utils
+sudo apt install python3 python3-pip python3-venv ffmpeg pipewire pulseaudio-utils wl-clipboard
 
 # Your system should already have PipeWire/PulseAudio
 ```
@@ -58,8 +71,8 @@ sudo apt install python3 python3-pip python3-venv ffmpeg portaudio19-dev pulseau
 python -m venv venv
 source venv/bin/activate
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Install the application and all cloud providers
+pip install -e ".[all]"
 ```
 
 **Note:** The first time you run transcription, Whisper will download the `base` model (~140MB).
@@ -93,11 +106,8 @@ ollama pull llama3.2:3b
 ### Run the Application
 
 ```bash
-# Activate virtual environment (if not already active)
-source venv/bin/activate
-
-# Run the application
-python run.py
+# Installed by setup.sh (works immediately even before your next login)
+~/.local/bin/meeting-notes
 
 # Or with development mode (preserves temp audio files):
 python run.py --dev
@@ -259,73 +269,49 @@ visualize that...
 **[00:12]** with what we look like, I'll share my screen right now...
 ```
 
-## Hyprland/Waybar Integration
+## Omarchy Quattro Integration
 
-### Waybar Status Module
+Omarchy 4 replaced Waybar and legacy Hyprland `.conf` overrides with its
+Quickshell desktop and Lua configuration. `./setup.sh` detects Quattro and
+runs `integrations/omarchy/install.sh` automatically. The installer is
+idempotent and can also be rerun directly after changing your bar layout.
 
-Shows recording status in your Waybar (idle/recording/processing).
+The integration uses only supported Quattro surfaces:
 
-**1. Add module to Waybar config** (`~/.config/waybar/config.jsonc`):
+- `o.bind` in `~/.config/hypr/bindings.lua`
+- a standard `.desktop` entry discovered by the native Apps menu
+- a Quickshell `type: "command"` bar module in `~/.config/omarchy/shell.json`
+- `omarchy-notification-send` for clickable notification history
+- `omarchy-launch-or-focus-tui` so repeated launches focus the existing window
 
-```jsonc
-{
-  "modules-right": [
-    "custom/meeting-notes",
-    // ... your other modules
-  ],
-  
-  "custom/meeting-notes": {
-    "exec": "/path/to/meeting-notes/hyprland/waybar-module.sh",
-    "return-type": "json",
-    "interval": 5,
-    "format": "{}",
-    "on-click": "$HOME/.local/bin/meeting-notes",
-    "tooltip": true
-  }
-}
-```
+The bar shows:
 
-**2. Add styles** (`~/.config/waybar/style.css`):
+- `󰗠` when the app is ready or not running
+- `󰦕 05:42` while recording
+- `󰄬` while transcribing and generating the note
 
-```css
-#custom-meeting-notes.recording {
-  color: #ff5555;
-  font-weight: bold;
-}
+Status is atomic JSON stored privately under `$XDG_RUNTIME_DIR`; it is not
+kept in the repository and is never evaluated as shell code. Click the bar
+indicator or a Meeting Notes notification to launch or focus the TUI.
 
-#custom-meeting-notes.processing {
-  color: #f1fa8c;
-}
-
-#custom-meeting-notes.ready {
-  color: #50fa7b;
-}
-
-#custom-meeting-notes.idle {
-  color: #6272a4;
-  opacity: 0.6;
-}
-```
-
-**3. Reload Waybar:**
+To remove the bar entry, delete the object with `"id": "meeting-notes"` from
+`~/.config/omarchy/shell.json`, then run:
 
 ```bash
-killall waybar && waybar &
+omarchy restart shell
 ```
 
-The module shows:
-- 󰗠 (gray) - App not running
-- 󰗠 (green) - Ready
-- 󰦕 05:42 (red) - Recording with timer
-- 󰄬 (yellow) - Processing
+For non-Omarchy Hyprland installations, launch `meeting-notes` from your
+preferred terminal and define compositor bindings using that installation's
+current configuration format.
 
-### Keybinding
+### Notifications
 
-Add to `~/.config/hypr/hyprlandrc`:
-
-```conf
-bind = SUPER, M, exec, $HOME/.local/bin/meeting-notes
-```
+Desktop notifications are sent only for important lifecycle events: recording
+start/cancel, processing, completion, failures, silent audio, and meeting-app
+audio routed to the wrong output. Notification text deliberately excludes
+meeting titles, transcripts, device names, paths, API errors, and credentials
+because Quattro retains recent notifications in its history.
 
 ## Audio Configuration
 
@@ -399,7 +385,8 @@ diagnoses all three. When a meeting app is running, it shows:
 - `⚠ Zoom is playing on 'alsa_output.builtin', but we'll capture 'alsa_output.scarlett'. Other participants' audio will be MISSING from your meeting notes.`
 
 And during a real recording, if a meeting app opens a new stream on a
-sink we're not capturing, you'll get a toast notification immediately.
+sink we're not capturing, you'll get both an in-app warning and a Quattro
+desktop notification immediately.
 
 ### Why does the recorder use different tools for mic vs system audio?
 

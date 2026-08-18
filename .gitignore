@@ -12,7 +12,6 @@ ENV/
 notes/
 recordings/
 /tmp/
-.status
 
 # Config files (sensitive data)
 config.yaml

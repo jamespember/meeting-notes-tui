@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Meeting Notes
+Comment=Record, transcribe, and summarize meetings
+Exec=omarchy-launch-or-focus-tui meeting-notes
+Terminal=false
+Icon=audio-input-microphone-symbolic
+Categories=Office;
+Keywords=meeting;recording;transcription;notes;
+StartupNotify=true

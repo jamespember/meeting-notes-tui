@@ -4,6 +4,16 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
+
+
+class PrivateRotatingFileHandler(RotatingFileHandler):
+    """Rotating handler that keeps every newly-created log at mode 0600."""
+
+    def _open(self):
+        stream = super()._open()
+        os.chmod(self.baseFilename, 0o600)
+        return stream
 
 
 def get_log_dir() -> Path:
@@ -14,7 +24,8 @@ def get_log_dir() -> Path:
     else:
         log_dir = Path.home() / ".config" / "meeting-notes"
     
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(log_dir, 0o700)
     return log_dir
 
 
@@ -24,7 +35,7 @@ def setup_logging(debug: bool = False) -> None:
     
     Creates two log files:
     - errors.log: Only ERROR and CRITICAL messages (always enabled)
-    - meeting-notes.log: All messages including INFO and DEBUG (daily rotation)
+    - meeting-notes.log: All messages including INFO and DEBUG (size-limited rotation)
     
     Args:
         debug: If True, set console output to DEBUG level
@@ -36,6 +47,8 @@ def setup_logging(debug: bool = False) -> None:
     root_logger.setLevel(logging.DEBUG)  # Capture everything
     
     # Clear any existing handlers to avoid duplicates
+    for handler in root_logger.handlers:
+        handler.close()
     root_logger.handlers.clear()
     
     # 1. Console handler - INFO or DEBUG depending on debug flag
@@ -47,7 +60,7 @@ def setup_logging(debug: bool = False) -> None:
     
     # 2. Error file handler - Only errors and above
     error_log = log_dir / "errors.log"
-    error_handler = logging.FileHandler(error_log)
+    error_handler = PrivateRotatingFileHandler(error_log, maxBytes=2_000_000, backupCount=2)
     error_handler.setLevel(logging.ERROR)
     error_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s\n'
@@ -58,7 +71,7 @@ def setup_logging(debug: bool = False) -> None:
     
     # 3. Full application log - All messages
     app_log = log_dir / "meeting-notes.log"
-    app_handler = logging.FileHandler(app_log)
+    app_handler = PrivateRotatingFileHandler(app_log, maxBytes=5_000_000, backupCount=2)
     app_handler.setLevel(logging.DEBUG)
     app_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

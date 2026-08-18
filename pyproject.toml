@@ -78,6 +78,7 @@ ignore = [
 
 [project.scripts]
 meeting-notes = "meeting_notes.app:run"
+meeting-notes-status = "meeting_notes.desktop:bar_status"
 
 [project.urls]
 Homepage = "https://github.com/jamespember/meeting-notes"

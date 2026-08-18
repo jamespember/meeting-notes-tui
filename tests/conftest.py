@@ -25,6 +25,9 @@ for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"):
 # to a tmp path, and the user's real logs stay clean.
 _test_xdg = tempfile.mkdtemp(prefix="meeting-notes-pytest-xdg-")
 os.environ["XDG_CONFIG_HOME"] = _test_xdg
+os.environ["XDG_STATE_HOME"] = str(Path(_test_xdg) / "state")
+os.environ["XDG_RUNTIME_DIR"] = str(Path(_test_xdg) / "runtime")
+os.environ["MEETING_NOTES_DISABLE_DESKTOP_NOTIFICATIONS"] = "1"
 
 # Silence the meeting_notes loggers for tests by default. Individual tests
 # that want to assert on log output can still configure their own handlers.

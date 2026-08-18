@@ -1,7 +1,10 @@
 #!/bin/bash
 # Main setup script for Meeting Notes AI
 
-set -e
+set -euo pipefail
+
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$ROOT_DIR/venv"
 
 echo "======================================"
 echo "  Meeting Notes AI - Setup"
@@ -37,28 +40,28 @@ else
     PYTHON=python3
 fi
 
-# Check if running in virtual environment
-if [ -z "$VIRTUAL_ENV" ]; then
+if [ ! -x "$VENV_DIR/bin/python" ]; then
     echo "Creating virtual environment..."
-    $PYTHON -m venv venv
+    "$PYTHON" -m venv "$VENV_DIR"
     echo "Virtual environment created"
-    echo ""
-    echo "Please activate the virtual environment and run this script again:"
-    echo "   source venv/bin/activate"
-    echo "   ./setup.sh"
-    exit 0
 fi
-
-echo "Virtual environment detected: $VIRTUAL_ENV"
+PYTHON="$VENV_DIR/bin/python"
+echo "Virtual environment: $VENV_DIR"
 echo ""
 
 # Check system dependencies
 echo "Checking system dependencies..."
 
 if ! command -v pactl &> /dev/null; then
-    echo "ERROR: pactl not found. Please install pulseaudio-utils:"
-    echo "   Arch:           sudo pacman -S pulseaudio-utils"
+    echo "ERROR: pactl not found. Please install Pulse compatibility tools:"
+    echo "   Arch/Omarchy:   omarchy pkg add libpulse"
     echo "   Ubuntu/Debian:  sudo apt install pulseaudio-utils"
+    exit 1
+fi
+
+if ! command -v parec &> /dev/null && ! command -v pw-record &> /dev/null; then
+    echo "ERROR: neither parec nor pw-record was found. Install an audio capture tool:"
+    echo "   Arch/Omarchy:   omarchy pkg add pipewire libpulse"
     exit 1
 fi
 
@@ -74,8 +77,31 @@ echo ""
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
+"$PYTHON" -m pip install --upgrade pip
+"$PYTHON" -m pip install -e "$ROOT_DIR[all]"
+
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$VENV_DIR/bin/meeting-notes" "$HOME/.local/bin/meeting-notes"
+ln -sfn "$VENV_DIR/bin/meeting-notes-status" "$HOME/.local/bin/meeting-notes-status"
+
+if command -v omarchy >/dev/null 2>&1 && [[ $(omarchy version) == 4.* ]]; then
+    "$ROOT_DIR/integrations/omarchy/install.sh"
+fi
+
+configure_ai_provider() {
+    "$PYTHON" - "$1" <<'PY'
+import sys
+
+from meeting_notes.config import load_config, save_config
+
+provider = sys.argv[1]
+config = load_config()
+config.ai_provider = provider
+if provider == "local":
+    config.ai_model = config.ollama_model or "llama3.2:3b"
+save_config(config)
+PY
+}
 
 echo ""
 echo "======================================"
@@ -110,7 +136,7 @@ while true; do
             echo "You'll choose between OpenAI, Anthropic, or OpenRouter."
             echo "Note: You'll be prompted before any existing settings are changed."
             echo ""
-            ./setup_cloud.sh
+            "$ROOT_DIR/setup_cloud.sh"
             break
             ;;
         2)
@@ -119,15 +145,18 @@ while true; do
             echo ""
             
             if ! command -v ollama &> /dev/null; then
-                echo "Ollama not found. Installing..."
-                curl -fsSL https://ollama.com/install.sh | sh
-            else
-                echo "Ollama already installed"
+                echo "Ollama is not installed. Install it from:"
+                echo "   https://ollama.com/download/linux"
+                echo "Then rerun setup or select Local from the app settings."
+                configure_ai_provider none
+                break
             fi
+            echo "Ollama already installed"
             
             echo ""
             echo "Pulling recommended model (llama3.2:3b)..."
             ollama pull llama3.2:3b
+            configure_ai_provider local
             
             echo ""
             echo "Local AI setup complete!"
@@ -138,6 +167,7 @@ while true; do
         3)
             echo ""
             echo "Skipping AI setup"
+            configure_ai_provider none
             echo ""
             echo "You can configure AI later by:"
             echo "  - Pressing ',' in the app"
@@ -156,7 +186,7 @@ echo "  Setup Complete!"
 echo "======================================"
 echo ""
 echo "To run the application:"
-echo "   $PYTHON run.py"
+echo "   $HOME/.local/bin/meeting-notes"
 echo ""
 echo "Keyboard shortcuts:"
 echo "   r - Start recording"

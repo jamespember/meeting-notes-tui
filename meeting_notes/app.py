@@ -26,6 +26,7 @@ from meeting_notes.settings import SettingsScreen
 from meeting_notes.logger import setup_logging, get_logger
 from meeting_notes.level_meter import MicLevelMeter
 from meeting_notes.audio_test_screen import AudioTestScreen
+from meeting_notes.desktop import clear_status, notify_desktop, write_status
 
 # Initialize logging
 setup_logging(debug=False)
@@ -777,6 +778,7 @@ class MeetingNotesApp(App):
         self.notes_dir = Path(self.config.notes_dir).expanduser()
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         self.is_recording = False
+        self.is_processing = False
         self.timer_interval = None
         # Refreshes the "audio sources" panel in the recording view so
         # the user can see in real time which apps are routing to the
@@ -873,8 +875,7 @@ class MeetingNotesApp(App):
             system_device=self.config.system_device or None,
         )
         
-        # Clear status file on startup
-        self._write_status_file("idle")
+        self._write_desktop_status("ready")
         
         # Show empty state
         viewer = self.query_one("#note-viewer", NoteViewer)
@@ -914,6 +915,7 @@ class MeetingNotesApp(App):
         # Always stop the level meter on shutdown so its parec subprocess
         # doesn't outlive the TUI.
         self._stop_level_meter()
+        clear_status()
     
     def load_meetings(self):
         """Load meeting notes from disk."""
@@ -967,36 +969,24 @@ class MeetingNotesApp(App):
         """Handle search input changes."""
         if event.input.id == "search-input":
             self.filter_meetings(event.value)
-    
-    def _write_status_file(self, status: str, title: str = "", duration: str = "") -> None:
-        """Write status file for Waybar integration.
-        
-        Args:
-            status: One of "idle", "recording", "processing"
-            title: Optional meeting title (for recording status)
-            duration: Optional duration string like "05:42" (for recording status)
-        """
+
+    def _write_desktop_status(self, state: str, duration: str = "") -> None:
+        """Publish optional desktop state without affecting recording."""
         try:
-            status_file = Path(__file__).parent.parent / ".status"
-            with open(status_file, 'w') as f:
-                f.write(f'STATUS="{status}"\n')
-                if title:
-                    f.write(f'TITLE="{title}"\n')
-                if duration:
-                    f.write(f'DURATION="{duration}"\n')
-        except Exception as e:
-            logger.warning(f"Failed to write status file: {e}")
+            write_status(state, duration)
+        except OSError as exc:
+            logger.warning(f"Could not update desktop status: {exc}")
     
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         """Control which actions are available based on recording state."""
         if action == "start_recording":
-            return not self.is_recording
+            return not self.is_recording and not self.is_processing
         elif action in ["stop_recording", "cancel_recording"]:
             return self.is_recording
         elif action == "audio_test":
             # Hide from the footer while recording — running the test mid-meeting
             # would fight the recorder for the same source.
-            return not self.is_recording
+            return not self.is_recording and not self.is_processing
         return True  # All other actions always available
     
     def update_recording_timer(self) -> None:
@@ -1005,8 +995,7 @@ class MeetingNotesApp(App):
             elapsed = int(time.time() - self.recording_start_time)
             duration_str = f"{elapsed // 60:02d}:{elapsed % 60:02d}"
 
-            # Update status file with current duration
-            self._write_status_file("recording", duration=duration_str)
+            self._write_desktop_status("recording", duration=duration_str)
 
             try:
                 recording_view = self.query_one(RecordingView)
@@ -1089,6 +1078,11 @@ class MeetingNotesApp(App):
                     f"This audio will NOT be in your meeting notes."
                 )
                 logger.warning(f"misrouted-app alert: {msg}")
+                notify_desktop(
+                    "A meeting app is playing through a different output. Its audio will not be recorded.",
+                    urgency="critical",
+                    glyph="󰓃",
+                )
                 try:
                     self.notify(msg, severity="warning", timeout=12)
                 except Exception:
@@ -1257,6 +1251,9 @@ class MeetingNotesApp(App):
 
     def action_start_recording(self) -> None:
         """Start recording and switch to full-screen recording view."""
+        if self.is_processing:
+            self.notify("Wait for the current recording to finish processing", severity="warning")
+            return
         logger.info(
             f"action_start_recording: mode={self.config.recording_mode}, "
             f"mic_device={self.config.mic_device!r}, "
@@ -1284,8 +1281,8 @@ class MeetingNotesApp(App):
                 recording_view = RecordingView()
                 self.mount(recording_view)
 
-                # Update status file for Waybar
-                self._write_status_file("recording", duration="00:00")
+                self._write_desktop_status("recording", duration="00:00")
+                notify_desktop("Recording started", glyph="󰦕")
 
                 # Get and display audio device info
                 device_info = self.recorder.get_audio_device_info()
@@ -1329,6 +1326,8 @@ class MeetingNotesApp(App):
                 logger.error(f"Failed to start recording: {e}", exc_info=True)
                 self.notify(f"Failed to start recording: {e}", severity="error")
                 self.is_recording = False
+                self._write_desktop_status("ready")
+                notify_desktop("Recording could not start. Open the app for details.", urgency="critical")
                 # Restore main panels if something failed
                 try:
                     main_panels = self.query_one("#main-panels", Container)
@@ -1358,8 +1357,7 @@ class MeetingNotesApp(App):
             self.recording_start_time = None
             logger.info("Recording cancelled successfully")
             
-            # Update status back to idle
-            self._write_status_file("idle")
+            self._write_desktop_status("ready")
             
             # Remove recording view
             try:
@@ -1377,10 +1375,13 @@ class MeetingNotesApp(App):
             
             # Notify user
             self.notify("Recording cancelled", severity="warning")
+            notify_desktop("Recording cancelled", glyph="󰜺")
             
         except Exception as e:
             logger.error(f"Failed to cancel recording: {e}", exc_info=True)
             self.notify(f"Failed to cancel recording: {e}", severity="error")
+            self._write_desktop_status("ready")
+            notify_desktop("Recording could not be cancelled cleanly. Open the app for details.", urgency="critical")
     
     def action_stop_recording(self) -> None:
         """Stop recording, get title if provided, and process."""
@@ -1430,6 +1431,11 @@ class MeetingNotesApp(App):
                         severity="warning",
                         timeout=15,
                     )
+                    notify_desktop(
+                        "System audio looked silent. Other participants may be missing.",
+                        urgency="critical",
+                        glyph="󰓃",
+                    )
                 if getattr(self.recorder, "last_mic_silent", False):
                     self.notify(
                         "⚠ Microphone leg looked silent during this recording. "
@@ -1437,14 +1443,19 @@ class MeetingNotesApp(App):
                         severity="warning",
                         timeout=15,
                     )
+                    notify_desktop(
+                        "Microphone audio looked silent. Your voice may be missing.",
+                        urgency="critical",
+                        glyph="󰍭",
+                    )
                 preserved = getattr(self.recorder, "last_temp_files", [])
                 if preserved:
                     logger.warning(
                         f"Preserved temp files for manual recovery: {preserved}"
                     )
 
-                # Update status to processing
-                self._write_status_file("processing")
+                self.is_processing = True
+                self._write_desktop_status("processing")
                 
                 # Remove recording view
                 try:
@@ -1462,12 +1473,16 @@ class MeetingNotesApp(App):
                 
                 # Process in background
                 self.notify("Processing recording...", severity="information")
+                notify_desktop("Recording stopped. Transcription is processing.", glyph="󰄬")
                 self.process_recording(audio_path, meeting_title, user_notes)
                 
             except Exception as e:
                 logger.error(f"Failed to stop recording: {e}", exc_info=True)
                 self.notify(f"Failed to stop recording: {e}", severity="error")
                 self.is_recording = False
+                self.is_processing = False
+                self._write_desktop_status("ready")
+                notify_desktop("Recording could not be stopped. Open the app for details.", urgency="critical")
     
     @work(exclusive=True, thread=True)
     def process_recording(self, audio_path: str, meeting_title: Optional[str] = None, user_notes: str = "") -> None:
@@ -1510,21 +1525,26 @@ class MeetingNotesApp(App):
                 logger.warning(f"Note created but AI summarization failed: {ai_error}")
                 self.call_from_thread(self.notify, f"⚠ Note created but {ai_error}", severity="warning")
                 self.call_from_thread(self.notify, f"Check ~/.config/meeting-notes/errors.log for details", severity="warning")
+                notify_desktop("Note saved, but AI summarization failed. Click to inspect it.", urgency="critical")
             else:
                 logger.info(f"Note created successfully: {note_path}")
                 logger.info(f"Transcript saved: {transcript_path}")
                 self.call_from_thread(self.notify, f"✓ Note created: {Path(note_path).name}", severity="information")
+                notify_desktop("Your note and transcript are ready.", glyph="󰈙")
             self.call_from_thread(self.load_meetings)
-            
-            # Clear status back to idle after successful processing
-            self._write_status_file("idle")
             
         except Exception as e:
             logger.error(f"Error processing recording: {e}", exc_info=True)
             self.call_from_thread(self.notify, f"Error processing: {e}", severity="error")
+            notify_desktop("Processing failed. Click to open the app and check the private log.", urgency="critical")
             
-            # Clear status back to idle after error
-            self._write_status_file("idle")
+        finally:
+            self._write_desktop_status("ready")
+            self.is_processing = False
+            try:
+                self.call_from_thread(self.refresh_bindings)
+            except Exception:
+                pass
     
     def _open_in_new_terminal(self, editor: str, file_path: str) -> bool:
         """

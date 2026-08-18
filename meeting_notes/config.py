@@ -52,9 +52,7 @@ class AppConfig:
     
     def _redact_key(self, key: str) -> str:
         """Redact API key for logging."""
-        if not key or len(key) < 8:
-            return "***"
-        return f"{key[:4]}...{key[-4:]}"
+        return "[redacted]" if key else ""
     
     def to_safe_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary with redacted API keys (safe for logging)."""
@@ -86,7 +84,8 @@ def get_config_path() -> Path:
     else:
         config_dir = Path.home() / ".config" / "meeting-notes"
     
-    config_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(config_dir, 0o700)
     return config_dir / "config.yaml"
 
 
