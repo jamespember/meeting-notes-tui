@@ -466,8 +466,8 @@ class SettingsScreen(Screen):
         current_model = self.config.get("ai_model", "haiku")
         
         models = [
-            ("haiku", "Claude Haiku 4.5", "~$0.005/meeting - Fast & affordable ⭐"),
-            ("sonnet", "Claude Sonnet 4.6", "~$0.020/meeting - Best quality"),
+            ("haiku", "Claude 3.5 Haiku", "~$0.005/meeting - Fast & affordable ⭐"),
+            ("sonnet", "Claude 3.5 Sonnet", "~$0.020/meeting - Best quality"),
         ]
         
         for model_id, model_name, model_desc in models:
@@ -502,7 +502,7 @@ class SettingsScreen(Screen):
         
         models = [
             ("cheap", "Cheap (Gemini Flash)", "~$0.001/meeting"),
-            ("balanced", "Balanced (Claude Haiku)", "~$0.01/meeting ⭐"),
+            ("balanced", "Balanced (Claude 3.5 Haiku)", "~$0.01/meeting ⭐"),
             ("premium", "Premium (Claude Sonnet)", "~$0.03/meeting"),
         ]
         

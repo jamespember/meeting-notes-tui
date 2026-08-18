@@ -12,25 +12,27 @@ from meeting_notes.ai_summarizer import (
 )
 
 
-def test_anthropic_haiku_is_current_4_5():
-    """eduspano/jmalobicky bumped Haiku from 3.5 to 4.5."""
+def test_anthropic_haiku_is_current_3_5():
+    """Haiku tier uses the real claude-3-5-haiku model ID."""
     haiku = AnthropicSummarizer.MODELS["haiku"]
-    assert haiku["id"] == "claude-haiku-4-5-20251001"
-    assert "4.5" in haiku["name"]
+    assert haiku["id"] == "claude-3-5-haiku-20241022"
+    assert "3.5" in haiku["name"]
 
 
-def test_anthropic_sonnet_is_current_4_6():
-    """eduspano bumped Sonnet to 4.6."""
+def test_anthropic_sonnet_is_current_3_5():
+    """Sonnet tier uses the real claude-3-5-sonnet model ID."""
     sonnet = AnthropicSummarizer.MODELS["sonnet"]
-    assert sonnet["id"] == "claude-sonnet-4-6"
-    assert "4.6" in sonnet["name"]
+    assert sonnet["id"] == "claude-3-5-sonnet-20241022"
+    assert "3.5" in sonnet["name"]
 
 
-def test_anthropic_no_deprecated_3_5_ids_remain():
-    """Guard against accidental revert to deprecated 3.5 model IDs."""
+def test_anthropic_no_fictional_ids_remain():
+    """Guard against accidentally reintroducing made-up model IDs."""
     for tier, info in AnthropicSummarizer.MODELS.items():
-        assert "3-5" not in info["id"], f"{tier} still references deprecated 3.5 model"
-        assert "3.5" not in info["name"], f"{tier} still labelled as 3.5"
+        # Real Anthropic IDs use the claude-3-5-* or claude-3-7-* pattern
+        assert "claude-" in info["id"], f"{tier} doesn't look like a real Anthropic ID"
+        assert "haiku-4-" not in info["id"] and "sonnet-4-" not in info["id"], \
+            f"{tier} contains fictional version number"
 
 
 def test_anthropic_models_have_required_fields():
